@@ -70,6 +70,150 @@ Filen `prompt.md` används som loggbok för Claude-sessioner. Vid varje ny sessi
 
 ---
 
+## 2026-05-09 — Poängsystem: övre sektionen (Ettor–Sexor, Summa, Bonus)
+
+### Syfte
+Implementera övre sektionens poängsystem med live-beräkning, kategori-val via tangent 1–6 och korrekt bonus-logik. Ingen nedre sektion.
+
+### Ny fil: yatzy_score.py
+
+`UPPER_CATEGORIES` — lista med tuples `(key, label, face, hotkey)` som definierar alla 6 kategorier. Används av klassen och exporteras till `HOTKEY_MAP`.
+
+`HOTKEY_MAP: dict[str, str]` — `"1"` → `"ettor"` etc. Importeras av `main.py` för tangent-routing.
+
+`YatzyScoreUpper`:
+- `_scores: dict[str, int | None]` — None = ej vald.
+- `calculate(key, dice)` — summerar tärningar som matchar kategorins face-värde; ignorerar `"-"`.
+- `register(key, dice)` → bool — låser in poäng, returnerar False om redan vald.
+- `is_locked(key)` — bool.
+- `total` — property, summa av registrerade kategorier.
+- `bonus` — property, 50 om `total >= 63`, annars 0.
+- `bonus_progress` — property, poäng kvar till bonus.
+- `rows(dice)` — returnerar lista med dicts redo för rendering (key, label, score, locked, hotkey).
+
+### Popup-uppdatering: ui_overlay.py
+
+`draw_score_popup(frame, score_upper, dice_values)` — ny signatur.
+- Kategorirader: `[1] Ettor  +2` (tillgänglig) / `  Ettor [VALD]  2` (låst, grå).
+- Grön score om > 0, grå om 0.
+- Summa + Bonus under separator.
+- "X poäng kvar till bonus" visas om bonus ej uppnådd.
+- Instruktion längst ner: "1–6 = välj kategori | SPACE = fortsätt kasta".
+
+### main.py
+
+- `score_upper = YatzyScoreUpper()` instansieras.
+- `key_callback`: popup öppen + 1–6 → `score_upper.register()` → `start_new_round()`.
+- SPACE i popup tillåts bara stänga om `can_roll()` — vid kast 3 måste kategori väljas.
+
+### Skapade filer
+- `yatzy_score.py`
+
+### Ändrade filer
+- `ui_overlay.py` — `draw_score_popup` med riktigt poänginnehåll
+- `main.py` — `score_upper`, `HOTKEY_MAP`, ny key-logik
+
+---
+
+## 2026-05-09 — Score-popup: modal efter varje kast
+
+### Syfte
+Lägga till en score-popup-meny som pausar spelet efter varje kast. Ingen poängräkning — endast UI och state-logik.
+
+### Tillståndslogik
+
+`GameState.show_score_menu: bool = False` — ny flagga.
+
+SPACE-flöde i `main.py`:
+1. Popup stängd + `can_roll()` → `roll()` → `show_score_menu = True`
+2. Popup öppen → `show_score_menu = False` (spelet återupptas)
+
+`start_new_round()` återställer `show_score_menu = False`.
+
+### Popup-design (UIOverlay.draw_score_popup)
+- `addWeighted` 0.55 alpha dimmar hela bakgrunden.
+- Centrerad ruta: 56% bildbredd × 38% bildhöjd.
+- Mörk bakgrund `(28, 28, 28)` + grå kantlinje.
+- Rad 1 (y=32% av boxhöjd): "Valj kategori" — stor vit text.
+- Rad 2: "(poangval kommer snart)" — liten grå text.
+- Separator-linje vid 60% av boxhöjd.
+- Rad 3 (nära botten): "Tryck SPACE for att fortsatta".
+- All text centrerad via `_put_centered()`.
+- Renderas sist i `frame_callback` → ligger alltid ovanpå allt annat.
+
+### Ändrade filer
+- `game_state.py` — `show_score_menu`-flagga i `__init__` och `start_new_round`
+- `ui_overlay.py` — ny metod `draw_score_popup(frame)`
+- `main.py` — popup-rendering i `frame_callback`, ny SPACE-logik i `key_callback`
+
+---
+
+## 2026-05-09 — UI-redesign: tärningsboxar i header + bottom-statusrad
+
+### Syfte
+Ersätta den röriga textraden med ett strukturerat UI: separata boxar per tärning i headern och en halvtransparent statusrad längst ner.
+
+### Layout
+
+**Header (toppen, 100 px)**
+- Mörk bakgrund, separator-linje mot kamerabilden.
+- 5 boxar centrerade horisontellt: bredd 13% av bildbredden var, gap 2.5%.
+- Varje box: liten grå etikett "T1" överst, stort vitt värde (scale 1.5) underst.
+- Låst tärning → tonad gul bakgrund (redo för framtida låslogik).
+- All textcentrering via `cv2.getTextSize` — fungerar vid valfri upplösning.
+
+**Bottom-statusrad (80 px, halvtransparent)**
+- `cv2.addWeighted` med alpha 0.70 för halvtransparent mörk bakgrund.
+- Rad 1: `"KAST 2 / 3"` — grön om kast kvar, röd vid 3/3. Dold vid kast 0.
+- Rad 2: `"Nytt kast: Tryck SPACE"` / `"Välj poängkategori"` / `"Tryck SPACE för att kasta"`.
+- Hjälpmetod `_put_centered()` beräknar x via `(frame_w - text_w) // 2`.
+
+### Ändrade filer
+- `ui_overlay.py` — helt omskriven; `draw_dice_panel` → `draw_ui(frame, game_state)` + `_draw_header` + `_draw_bottom`
+- `main.py` — `draw_dice_panel(...)` → `draw_ui(frame, game_state)`
+
+---
+
+## 2026-05-09 — Kastlogik: GameState, SPACE-tangent, max 3 kast per runda
+
+### Syfte
+Lägga till riktig Yatzy-rundlogik: max 3 kast per runda, SPACE-tangent för att kasta, tydlig statustext i UI-panelen. Ingen poänglogik.
+
+### Arkitektur
+
+**game_state.py (ny)**
+- `GameState`-klass med: `roll_count`, `dice_values` (5 bekräftade värden), `locked_dice` (5 bools), `_live_values` (senaste YOLO-läsning).
+- `update_live(values)` — anropas varje frame med YOLO-detektioner.
+- `roll()` — kopierar `_live_values` → `dice_values` för olåsta slots, ökar `roll_count`. Returnerar False om `roll_count >= 3`.
+- `can_roll()` — bool.
+- `start_new_round()` — återställer allt.
+- `roll_label` — property som returnerar statustext beroende på fas.
+
+**camera_module.py**
+- Ny: `set_key_callback(callback)` och `_key_callback`-attribut.
+- I loopen: `key = cv2.waitKey(1) & 0xFF` — om `key != 255` och callback finns → anropa den.
+- 'q' avslutar fortfarande loopen exklusivt.
+
+**main.py**
+- `game_state = GameState()` instansieras.
+- `frame_callback` anropar `game_state.update_live(live_values)` och ritar panel med `game_state.dice_values` + `game_state.roll_label`.
+- `key_callback(key)` anropar `game_state.roll()` vid SPACE.
+
+**ui_overlay.py**
+- `draw_dice_panel` utökad med `roll_label: str = ""`.
+- Tärningsslots täcker vänstra 60% av panelen; statustext visas i de resterande 40%.
+- Grön text vid aktiv runda, orange-röd text vid "Välj poäng".
+
+### Skapade filer
+- `game_state.py`
+
+### Ändrade filer
+- `camera_module.py` — `set_key_callback`, key-hantering i loop
+- `main.py` — `GameState`-integration, `key_callback`
+- `ui_overlay.py` — `roll_label`-parameter, delad panel
+
+---
+
 ## 2026-05-09 — Fix: alla 5 slots synliga (dynamiska positioner)
 
 ### Problem

@@ -21,6 +21,7 @@ class CameraModule:
 
     def __init__(self, camera_index: int = 1):
         self._frame_callback = None
+        self._key_callback   = None
         self.capture = self._open_camera(camera_index)
 
     # ------------------------------------------------------------------
@@ -64,6 +65,15 @@ class CameraModule:
         """
         self._frame_callback = callback
 
+    def set_key_callback(self, callback):
+        """
+        Registrerar en callback för tangenttryckningar (utom 'q').
+
+        Callback-signatur: callback(key: int) -> None
+        key är ASCII-värdet av den tangent som trycktes.
+        """
+        self._key_callback = callback
+
     # ------------------------------------------------------------------
     # Huvudloop
     # ------------------------------------------------------------------
@@ -103,9 +113,11 @@ class CameraModule:
 
             cv2.imshow(self.WINDOW_TITLE, frame)
 
-            # Vänta 1 ms på tangenttryckning — 'q' avslutar loopen
-            if cv2.waitKey(1) & 0xFF == ord("q"):
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord("q"):
                 break
+            if key != 255 and self._key_callback is not None:
+                self._key_callback(key)
 
         self._release()
 

@@ -2,6 +2,121 @@
 
 ---
 
+## 2026-05-09 — Poängsystem: övre sektionen (Ettor–Sexor, Summa, Bonus)
+
+### Full Claude-prompt
+
+```text
+Implementera ÖVRE sektionen av Yatzy-tabellen.
+- Klass YatzyScoreUpper: calculate, register, is_locked, total, bonus, rows
+- rows(dice) returnerar raddata för rendering
+- Popup visar potentiell poäng och låsta kategorier
+- 1-6 tangenter väljer kategori → start_new_round()
+- Bonus 50p vid summa >= 63
+- Ingen nedre sektion. Ingen kastlogik. Endast poängsystem.
+```
+
+### Sammanfattning
+
+`yatzy_score.py` skapades med `UPPER_CATEGORIES`, `HOTKEY_MAP` och `YatzyScoreUpper`. `calculate()` summerar matchande tärningsvärden, `register()` låser in och returnerar False om redan vald. `rows(dice)` ger fullständig raddata inkl. locked/hotkey för rendering. `bonus_progress` beräknar poäng kvar till bonus. Popupen i `ui_overlay.py` fick ny signatur `draw_score_popup(frame, score_upper, dice_values)` med 6 kategorirader, summering, bonusdisplay och progress. `main.py` hanterar 1–6 tangenter via `HOTKEY_MAP` → `register()` → `start_new_round()`.
+
+### Skapade filer
+- `yatzy_score.py`
+
+### Ändrade filer
+- `ui_overlay.py` — riktigt poänginnehåll i popup
+- `main.py` — score_upper, HOTKEY_MAP, 1-6 tangenter
+- `CLAUDE.md` — ny loggsektion
+- `prompt.md` — denna loggsektion
+
+---
+
+## 2026-05-09 — Score-popup: modal efter varje kast
+
+### Full Claude-prompt
+
+```text
+Skapa centrerad popup-meny som visas efter varje kast.
+- show_score_menu = True efter SPACE + kast
+- Popup pausar spelet, YOLO fortsätter visuellt
+- SPACE stänger popup
+- draw_score_popup(frame): dimma bakgrund, centrerad ruta,
+  "Välj kategori (kommer snart)", "Tryck SPACE för att fortsätta"
+- Ingen poängräkning ännu — endast UI och state-logik
+```
+
+### Sammanfattning
+
+`GameState` fick `show_score_menu: bool = False` i `__init__` och `start_new_round`. `key_callback` i `main.py` hanterar nu två grenar: popup öppen → stäng; popup stängd + `can_roll()` → `roll()` + öppna popup. `frame_callback` ritar `draw_score_popup` sist om flaggan är satt. `UIOverlay.draw_score_popup` dimmar hela bilden med `addWeighted` (alpha 0.55), ritar centrerad box (56%×38%), titel, undertitel, separator och instruktionstext — allt via `_put_centered`.
+
+### Ändrade filer
+- `game_state.py` — `show_score_menu`-flagga
+- `ui_overlay.py` — `draw_score_popup`
+- `main.py` — ny key-logik + popup-rendering
+- `CLAUDE.md` — ny loggsektion
+- `prompt.md` — denna loggsektion
+
+---
+
+## 2026-05-09 — UI-redesign: tärningsboxar i header + bottom-statusrad
+
+### Full Claude-prompt
+
+```text
+Jag bygger ett AI-Yatzy i Python med OpenCV.
+MÅL: Förbättra UI-layouten
+
+1) TOPPEN – 5 separata boxar (T1–T5), centrerad text, låst tärning = annan färg
+2) LÄNGST NER – "KAST 2/3" grön/röd, centrerat
+3) LÄNGST NER – "Nytt kast: Tryck SPACE" / "Välj poängkategori", halvtransparent bakgrund
+Skapa draw_ui(frame, game_state). Dynamisk bredd. Proportionell spacing.
+```
+
+### Sammanfattning
+
+`UIOverlay` skrevs om helt. `draw_ui(frame, game_state)` anropar `_draw_header` och `_draw_bottom`. Header: 5 boxar á 13% bildbredd med 2.5% gap, centrerade via `(w - total_w) // 2`. All text centreras med `cv2.getTextSize`. Bottom-bar: `addWeighted` alpha 0.70, rad 1 = "KAST X/3" (grön/röd), rad 2 = instruktionstext. Statisk hjälpmetod `_put_centered` återanvänds för alla horisontellt centrerade strängar. `main.py` uppdaterat till `overlay.draw_ui(frame, game_state)`.
+
+### Ändrade filer
+- `ui_overlay.py` — omskriven med `draw_ui`, `_draw_header`, `_draw_bottom`, `_put_centered`
+- `main.py` — nytt anrop `draw_ui`
+- `CLAUDE.md` — ny loggsektion
+- `prompt.md` — denna loggsektion
+
+---
+
+## 2026-05-09 — Kastlogik: GameState, SPACE-tangent, max 3 kast per runda
+
+### Full Claude-prompt
+
+```text
+Jag bygger ett AI-baserat Yatzy-spel i Python med OpenCV och YOLO.
+Nu vill jag implementera KASTLOGIKEN i spelet.
+
+MÅL: Implementera kastlogik (max 3 kast per runda)
+- Max 3 kast per runda, SPACE = kasta
+- GameState-klass: roll_count, dice_values, locked_dice
+- Visa Roll 1/3, Roll 2/3, Roll 3/3 - Select score
+- start_new_round() för ny runda
+- Separera logik från rendering
+- Inga globala variabler
+```
+
+### Sammanfattning
+
+`GameState` (ny fil `game_state.py`) håller `roll_count`, `dice_values`, `locked_dice` och `_live_values`. `update_live()` anropas varje frame; `roll()` låser in kamerans aktuella värden och ökar `roll_count` — blockeras tyst efter 3. `roll_label`-property ger statustext per fas. `CameraModule` fick `set_key_callback()` och skickar alla tangenter utom 'q' till callbacken. `main.py` kopplar SPACE → `game_state.roll()`. `ui_overlay.py` visar tärningsvärden i vänstra 60% och roll-status i högra 40% av panelen.
+
+### Skapade filer
+- `game_state.py`
+
+### Ändrade filer
+- `camera_module.py` — key callback
+- `main.py` — GameState-integration
+- `ui_overlay.py` — roll_label i panelen
+- `CLAUDE.md` — ny loggsektion
+- `prompt.md` — denna loggsektion
+
+---
+
 ## 2026-05-09 — Fix: alla 5 slots synliga (dynamiska positioner)
 
 ### Problem
