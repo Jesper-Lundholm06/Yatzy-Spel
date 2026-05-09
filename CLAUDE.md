@@ -88,6 +88,28 @@ Filen `prompt.md` används som loggbok för Claude-sessioner. Vid varje ny sessi
 
 ---
 
+## 2026-05-09 — Bugfix: Två par kräver två OLIKA värden
+
+### Problem
+`[6,6,6,6,6]` returnerade `(24, True)` för "Två par" — felaktigt.
+
+### Rotorsak
+`floor(c/2)` per värde skapade `pairs = [6, 6]` ur ett enda värde → inget krav på distinkta värden.
+
+### Fix (YatzyScoreLower.calculate, "tva_par")
+```python
+pair_values = sorted([v for v, c in counts.items() if c >= 2], reverse=True)
+if len(pair_values) >= 2:
+    return (pair_values[0] * 2 + pair_values[1] * 2, True)
+return (0, False)
+```
+Tabellen i nedre sektionen korrigeras: Två par kräver nu minst 2 distinkta värden med count≥2.
+
+### Ändrade filer
+- `yatzy_score.py` — `tva_par`-grenen i `YatzyScoreLower.calculate`
+
+---
+
 ## 2026-05-09 — Poängsystem: nedre sektionen + grand total
 
 ### Syfte
@@ -98,7 +120,7 @@ Implementera nedre sektionens 9 kategorier med korrekt Yatzy-regellogik, integre
 | Kategori | Logik | Specialfall |
 |---|---|---|
 | Ett par | max(v där count≥2) × 2 | — |
-| Två par | Två högsta par via floor(c/2) per värde | fyra lika = två par |
+| Två par | Två distinkta värden med count≥2, ta de två högsta | fyra lika = OGILTIGT |
 | Tretal | max(v där count≥3) × 3 | — |
 | Fyrtal | max(v där count≥4) × 4 | — |
 | Kåk | sum(dice) om exakt count==3 och count==2 | Yatzy (5 lika) exkluderas |

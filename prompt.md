@@ -2,6 +2,31 @@
 
 ---
 
+## 2026-05-09 — Bugfix: Två par kräver nu två OLIKA värden
+
+### Problem
+`[6,6,6,6,6]` returnerade `(24, True)` för kategorin "Två par" — felaktigt.
+
+### Rotorsak
+Den ursprungliga koden använde `c // 2` (floor-division) för att räkna par per värde.
+`Counter({6: 5})` → `floor(5/2) = 2` → `pairs = [6, 6]` → `6*2 + 6*2 = 24`.
+Ingen kontroll på att de två paren måste ha **olika** värden.
+
+### Fix
+```python
+pair_values = sorted([v for v, c in counts.items() if c >= 2], reverse=True)
+if len(pair_values) >= 2:
+    return (pair_values[0] * 2 + pair_values[1] * 2, True)
+return (0, False)
+```
+Samlar distinkta värden med count≥2. Kräver minst 2 sådana värden.
+`[6,6,6,6,6]` → `pair_values = [6]` → `(0, False)`.
+
+### Ändrade filer
+- `yatzy_score.py` — `tva_par`-grenen i `YatzyScoreLower.calculate`
+
+---
+
 ## 2026-05-09 — Fix: upper_total-property + bonuslogik verifierad
 
 ### Kontext

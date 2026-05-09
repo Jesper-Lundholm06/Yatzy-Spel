@@ -182,12 +182,10 @@ class YatzyScoreLower:
             return (0, False)
 
         if key == "tva_par":
-            # floor(c/2) par per värde — hanterar fyra lika som två par
-            pairs = []
-            for v, c in sorted(counts.items(), reverse=True):
-                pairs.extend([v] * (c // 2))
-            if len(pairs) >= 2:
-                return (pairs[0] * 2 + pairs[1] * 2, True)
+            # Kräver minst två OLIKA värden som båda förekommer minst två gånger
+            pair_values = sorted([v for v, c in counts.items() if c >= 2], reverse=True)
+            if len(pair_values) >= 2:
+                return (pair_values[0] * 2 + pair_values[1] * 2, True)
             return (0, False)
 
         if key == "tretal":
