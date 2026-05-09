@@ -70,6 +70,73 @@ Filen `prompt.md` används som loggbok för Claude-sessioner. Vid varje ny sessi
 
 ---
 
+## 2026-05-09 — Fix: alla 5 slots synliga (dynamiska positioner)
+
+### Problem
+T4 och T5 klipptes bort vid smalare kameraupplösningar. Hardkodade steg på 200 px krävde minst ~1050 px bredd för att alla 5 slots skulle synas.
+
+### Fix
+Slotpositioner beräknas nu dynamiskt: `slot_w = w // 5`, `x = slot_w * i + slot_w // 6`. Alla 5 slots fyller alltid hela panelbredden oavsett upplösning. Font scale sänkt 1.0 → 0.9 för att texten ska rymmas även på smala frames.
+
+### Ändrade filer
+- `ui_overlay.py` — dynamiska slotpositioner, borttagna hardkodade konstanter
+
+---
+
+## 2026-05-09 — Fast toppmeny med vänster-till-höger-sortering
+
+### Syfte
+Ersätta den blink-baserade stabiliseringen med en sorteringsbaserad toppmeny som alltid visar exakt 5 fasta slots i spatial ordning.
+
+### Lösning
+
+**Sortering (main.py)**
+- Detektioner sorteras på `bbox[0]` (x1) → vänster till höger.
+- Värden extraheras till en platt lista: `[3, 5, 1, ...]`.
+- Listan paddas med `"-"` tills den är exakt 5 lång och trunkeras vid överskott.
+- `last_valid_dice`-variabeln togs bort — ingen global state behövs.
+
+**Fast toppmeny (ui_overlay.py)**
+- Panel höjd ändrad: 60 px → 80 px.
+- Varje slot på fast x-position: `50 + i * 200` → T1 vid x=50, T2 vid x=250, osv.
+- Format per slot: `"T1: 3"`, `"T2: -"` — aldrig omflyttning, alltid samma pixelposition.
+- `cv2.LINE_AA` för kantutjämnad text.
+
+### Ändrade filer
+- `main.py` — sorteringslogik, tar bort `last_valid_dice`, ny `draw_dice_panel`-anropssignatur
+- `ui_overlay.py` — omskriven `draw_dice_panel` med fasta slots och nytt API
+
+---
+
+## 2026-05-09 — Stabilisering av YOLO-detektioner och overlay-panel
+
+### Syfte
+Eliminera blinkande tärningsvärden och lägga till en visuell informationspanel i kamerafönstret.
+
+### Lösning
+
+**Anti-blink-stabilisering (main.py)**
+- `last_valid_dice: list[dict] = []` — global variabel som håller senaste giltiga detektioner.
+- Uppdateras **endast** när `len(detections) == 5`. Vid färre detektioner behålls föregående värden.
+- Förhindrar att siffror försvinner när YOLO missar en tärning i enstaka frames.
+
+**Overlay-panel (ui_overlay.py)**
+- Ny klass `UIOverlay` med metod `draw_dice_panel(frame, dice_list)`.
+- Ritar en 60 px hög mörk panel i toppen av bilden via `cv2.rectangle`.
+- Visar text: `DICE:  [3] [5] [1] [6] [2]` — gul-orange accent för värden.
+- Separeras visuellt från resten av bilden med en tunn linje.
+
+### Skapade/ändrade filer
+- `ui_overlay.py` — ny fil med `UIOverlay`-klassen
+- `main.py` — stabiliseringslogik + integration av `UIOverlay`
+
+### Teknisk sammanfattning
+Enkel frame-baserad stabilisering utan historik-buffert — zero komplexitet, hög effekt.
+Overlay renderas sist i callback-kedjan så att panelen alltid syns ovanpå lock-zone och bounding boxes.
+Ingen spellogik, ingen popup-meny och ingen låszonsförändring berörs.
+
+---
+
 ## 2026-05-09 — Låszon
 
 ### Hur låszonen fungerar

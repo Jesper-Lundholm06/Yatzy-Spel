@@ -2,6 +2,101 @@
 
 ---
 
+## 2026-05-09 — Fix: alla 5 slots synliga (dynamiska positioner)
+
+### Problem
+T4 och T5 klipptes av till höger — hardkodade 200 px-steg krävde ~1050 px bredd.
+
+### Fix
+`slot_w = w // 5` beräknas per frame. Varje slot placeras på `slot_w * i + slot_w // 6`. Font scale sänkt till 0.9. Alla 5 slots syns alltid oavsett kameraupplösning.
+
+### Ändrade filer
+- `ui_overlay.py` — dynamiska slotpositioner
+- `CLAUDE.md` — ny loggsektion
+- `prompt.md` — denna loggsektion
+
+---
+
+## 2026-05-09 — Fast toppmeny med vänster-till-höger-sortering
+
+### Full Claude-prompt
+
+```text
+# UPPDATERING: Stabil YOLO-visning + fast toppmeny
+# MÅL:
+# 1. Sortera alla detekterade tärningar från vänster till höger (baserat på bbox x-koordinat).
+# 2. Skapa en fast toppmeny med 5 slots.
+# 3. Endast uppdatera siffrorna – de får INTE hoppa runt mellan frames.
+# 4. Om mindre än 5 tärningar hittas ska resterande slots visa "-".
+# 5. Ingen avancerad tracking – endast sortering på x-koordinat.
+```
+
+### Sammanfattning
+
+Sorteringsbaserad approach ersätter den tidigare blink-stabiliseringen. Detektioner sorteras på `bbox[0]` (x1) direkt i `frame_callback`, värden extraheras till en platt lista och paddas till exakt 5 element med `"-"`. `last_valid_dice`-globalen togs bort. `UIOverlay.draw_dice_panel` skrevs om: panel 80 px hög, 5 fasta slots med format `"T1: 3"` på pixelpositionerna `50 + i*200`, `cv2.LINE_AA` för skarp text. Ingen spellogik berörd.
+
+### Ändrade filer
+
+- `main.py` — sortering, borttagning av global state, ny anropssignatur
+- `ui_overlay.py` — omskriven `draw_dice_panel` med fasta slots
+- `CLAUDE.md` — ny loggsektion
+- `prompt.md` — denna loggsektion
+
+---
+
+## 2026-05-09 — Stabilisering av YOLO-detektioner och overlay-panel
+
+### Full Claude-prompt
+
+```text
+Vi ska nu förbättra YOLO-visningen i AI Yatzy.
+
+Mål:
+1. Skapa stabila tärningsvärden som inte blinkar mellan frames.
+2. Visa en liten informationspanel längst upp i kamerafönstret som visar aktuella tärningsvärden.
+
+VIKTIGT:
+- Ingen kastlogik.
+- Ingen popup-meny.
+- Ingen låszonsförändring.
+- Endast stabil visning + overlay-panel.
+- Uppdatera alltid CLAUDE.md i slutet.
+
+DEL 1 – STABILISERA DETEKTIONER (ANTI-BLINK)
+- last_valid_dice = [] i main.py
+- Uppdatera endast när len(detections) == 5
+
+DEL 2 – SKAPA EN ÖVERLAY-PANEL
+- Ny fil: ui_overlay.py
+- Klass: UIOverlay
+- Metod: draw_dice_panel(frame, dice_list)
+- Mörk rektangel 60 px hög överst i bilden
+- Text: "DICE:  [5] [5] [2] [1] [6]"
+
+DEL 3 – INTEGRATION
+- UIOverlay-instans i main.py
+- Anropas efter stabilisering
+
+DOKUMENTATION
+- Uppdatera CLAUDE.md och prompt.md
+```
+
+### Sammanfattning
+
+`last_valid_dice` lades till i `main.py` som en global lista — uppdateras **bara** när YOLO returnerar exakt 5 detektioner. Vid färre detektioner behålls föregående värden, vilket eliminerar blinkande tärningssiffror. `UIOverlay` skapades i `ui_overlay.py` med `draw_dice_panel()` som ritar en 60 px mörk panel i bildtoppen och skriver ut tärningsvärden med gul-orange accent-färg. Panelen ritas sist i callback-kedjan, ovanpå lock-zone och bounding boxes.
+
+### Skapade filer
+
+- `ui_overlay.py` — `UIOverlay`-klass med `draw_dice_panel()`
+
+### Ändrade filer
+
+- `main.py` — `last_valid_dice`, stabiliseringslogik, `UIOverlay`-integration
+- `CLAUDE.md` — ny loggsektion
+- `prompt.md` — denna loggsektion
+
+---
+
 ## 2026-05-09 — Låszon
 
 ### Full Claude-prompt
