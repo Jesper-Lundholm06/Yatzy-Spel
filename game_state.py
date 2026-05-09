@@ -20,6 +20,8 @@ class GameState:
         self.dice_values:    list       = ["-"] * 5   # bekräftade värden från senaste kast
         self.locked_dice:    list[bool] = [False] * 5
         self.show_score_menu: bool      = False        # True → visa popup, pausa kast
+        self.stryk_mode:     bool      = False        # True → nästa a–i-tangent struker kategorin
+        self.game_over:      bool      = False        # True → spelet slut, visa resultatskärm
 
         self._live_values: list = ["-"] * 5            # YOLO-läsning från senaste frame
 
@@ -64,6 +66,7 @@ class GameState:
         self.dice_values     = ["-"] * 5
         self.locked_dice     = [False] * 5
         self.show_score_menu = False
+        self.stryk_mode      = False
         self._live_values    = ["-"] * 5
 
     # ------------------------------------------------------------------

@@ -88,6 +88,102 @@ Filen `prompt.md` används som loggbok för Claude-sessioner. Vid varje ny sessi
 
 ---
 
+## 2026-05-09 — Game Over + Resultatskärm
+
+### Syfte
+Spelet avslutas automatiskt när alla 15 kategorier (6 övre + 9 nedre) har ett värde. En resultatskärm visas med poänguppdelning och möjlighet att starta om.
+
+### Logik
+
+**Kontroll efter varje poängval/strykning (`_on_score_registered` i main.py)**
+```python
+if score_upper.is_complete() and score_lower.is_complete():
+    game_state.game_over = True
+    game_state.show_score_menu = False
+    game_state.stryk_mode = False
+else:
+    game_state.start_new_round()
+```
+
+**Omstart (key_callback)**
+- SPACE eller R på resultatskärmen → `score_upper.reset()` + `score_lower.reset()` + `game_state.game_over = False` + `start_new_round()`
+- `return` i game_over-blocket blockerar alla andra tangenttryckningar
+
+### Ändringar per fil
+
+**yatzy_score.py (båda klasserna)**
+- `is_complete()` — True när alla kategorier har ett värde (≠ None)
+- `reset()` — återställer `_scores` till alla None (YatzyScoreLower tömmer även `_struck`)
+
+**game_state.py**
+- `game_over: bool = False` tillagd i `__init__` (återställs INTE av `start_new_round()`)
+
+**main.py**
+- `_on_score_registered()` — ny hjälpfunktion: loggar totalen, kollar game_over, annars start_new_round
+- `key_callback` — game_over-läge hanteras överst med `return` (blockerar alla andra nycklar)
+- `frame_callback` — steg 7: `overlay.draw_game_over()` renderas ovanpå allt
+
+**ui_overlay.py**
+- `draw_game_over(frame, score_upper, score_lower)` — ny metod: dimmar 74%, centrerad resultatruta med guldbård, visar övre/bonus/övre total/nedre/grand total + restart-instruktion
+- `_draw_result_row(...)` — ny hjälpmetod (label vänster, värde höger)
+
+### Ändrade filer
+- `yatzy_score.py` — `is_complete`, `reset` på båda klasserna
+- `game_state.py` — `game_over`-flagga
+- `main.py` — `_on_score_registered`, uppdaterad `key_callback` och `frame_callback`
+- `ui_overlay.py` — `draw_game_over`, `_draw_result_row`
+
+---
+
+## 2026-05-09 — Stryk-funktion (nedre sektion)
+
+### Syfte
+Spelaren ska kunna stryka en valfri olåst nedre kategori efter att alla 3 kast är gjorda. Struken kategori får 0 poäng och låses permanent.
+
+### Regler implementerade
+- Stryk är bara tillgänglig när `roll_count == MAX_ROLLS` (alla kast använda).
+- Minst en olåst nedre kategori måste finnas.
+- Man kan inte stryka övre sektion, bonus, summa eller total.
+- Struken kategori kan inte väljas igen.
+
+### Tangentmappning tillagd
+| Tangent | Effekt |
+|---|---|
+| `s` | Aktivera/avbryt strykläge (popup öppen, alla kast klara) |
+| `a`–`i` i strykläge | Struk vald nedre kategori (0 poäng, permanent låst) |
+
+### Ändringar per fil
+
+**game_state.py**
+- `stryk_mode: bool = False` tillagd i `__init__` och `start_new_round()`
+
+**yatzy_score.py (YatzyScoreLower)**
+- `_struck: set[str]` — spårar struken kategorier
+- `is_struck(key)` — bool
+- `strike(key)` — sätter `_scores[key] = 0`, lägger till i `_struck`, returnerar False om redan låst
+- `rows()` — ny nyckel `struck` per rad
+
+**main.py (key_callback)**
+- `can_stryk`-check: `roll_count >= MAX_ROLLS` AND minst en olåst nedre kategori
+- `s`-tangent: togglar `stryk_mode` (aktivera/avbryt)
+- I strykläge + `a`–`i`: anropar `score_lower.strike()` istället för `register()`
+- Normal poängval blockeras i strykläge
+
+**ui_overlay.py**
+- `draw_score_popup` signatur: `stryk_mode: bool = False` tillagd
+- Popup-kantlinje: röd `(40, 40, 200)` i strykläge, grå annars
+- Instruktionstext: visar stryklägesstatus och `[s] Stryk`-hint
+- Nedre rader renderas med `stryk_mode` → alla olåsta kategorier visas klickbara (blå/röd)
+- `_draw_score_row`: nytt tillstånd `struck` → mörk röd text + `[STRUKEN]`
+
+### Ändrade filer
+- `game_state.py`
+- `yatzy_score.py`
+- `main.py`
+- `ui_overlay.py`
+
+---
+
 ## 2026-05-09 — Bugfix: Två par kräver två OLIKA värden
 
 ### Problem

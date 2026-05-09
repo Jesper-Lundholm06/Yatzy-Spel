@@ -136,7 +136,8 @@ class UIOverlay:
     # Score-popup
     # ------------------------------------------------------------------
 
-    def draw_score_popup(self, frame, score_upper, score_lower, dice_values: list) -> None:
+    def draw_score_popup(self, frame, score_upper, score_lower,
+                         dice_values: list, stryk_mode: bool = False) -> None:
         """
         Rita score-popup med övre och nedre sektionen.
 
@@ -162,8 +163,9 @@ class UIOverlay:
         bx    = (w - box_w) // 2
         by    = (h - box_h) // 2
 
+        border_col = (40, 40, 200) if stryk_mode else (110, 110, 110)   # röd kant i strykläge
         cv2.rectangle(frame, (bx, by), (bx + box_w, by + box_h), (28, 28, 28), -1)
-        cv2.rectangle(frame, (bx, by), (bx + box_w, by + box_h), (110, 110, 110), 2)
+        cv2.rectangle(frame, (bx, by), (bx + box_w, by + box_h), border_col, 2)
 
         pad_l = bx + 18
         pad_r = bx + box_w - 18
@@ -215,7 +217,7 @@ class UIOverlay:
         y += row_h - 4
 
         for row in score_lower.rows(dice_values):
-            self._draw_score_row(frame, row, pad_l, pad_r, y, row_h)
+            self._draw_score_row(frame, row, pad_l, pad_r, y, row_h, stryk_mode)
             y += row_h
 
         # Nedre summor
@@ -236,27 +238,128 @@ class UIOverlay:
         # ── Instruktion ───────────────────────────────────────────────
         instr_y = by + box_h - 14
         cv2.line(frame, (pad_l, instr_y - 20), (pad_r, instr_y - 20), (60, 60, 60), 1)
-        self._put_centered(frame, "1-6 / a-i = valj kategori  |  SPACE = kasta igen", w,
-                           instr_y, 0.46, (145, 145, 145), 1)
+        if stryk_mode:
+            instr_txt = "STRYK AKTIV  —  [a-i] valj kategori att stryka  |  [s] avbryt"
+            instr_col = (80, 80, 210)
+        else:
+            instr_txt = "1-6 / a-i = valj kategori  |  [s] Stryk  |  SPACE = kasta igen"
+            instr_col = (145, 145, 145)
+        self._put_centered(frame, instr_txt, w, instr_y, 0.46, instr_col, 1)
+
+    # ------------------------------------------------------------------
+    # Resultatskärm (game over)
+    # ------------------------------------------------------------------
+
+    def draw_game_over(self, frame, score_upper, score_lower) -> None:
+        """
+        Rita final-overlay när spelet är slut.
+
+        Visar poänguppdelning och instruktion för omstart.
+        Renderas ovanpå allt annat.
+        """
+        h, w = frame.shape[:2]
+
+        # Kraftig dimning
+        dim = frame.copy()
+        cv2.rectangle(dim, (0, 0), (w, h), (0, 0, 0), -1)
+        cv2.addWeighted(dim, 0.74, frame, 0.26, 0, frame)
+
+        # Resultatruta
+        box_w = int(w * 0.46)
+        box_h = int(h * 0.62)
+        bx    = (w - box_w) // 2
+        by    = (h - box_h) // 2
+
+        cv2.rectangle(frame, (bx, by), (bx + box_w, by + box_h), (22, 22, 22), -1)
+        cv2.rectangle(frame, (bx, by), (bx + box_w, by + box_h), (0, 215, 255), 2)  # guldbård
+
+        pad_l = bx + 28
+        pad_r = bx + box_w - 28
+        row_h = 34
+        scale = 0.65
+        y     = by + 42
+
+        # Titel
+        self._put_centered(frame, "SPELET AR SLUT", w, y, 0.92, (255, 255, 255), 2)
+        y += 22
+        cv2.line(frame, (pad_l, y), (pad_r, y), (90, 90, 90), 1)
+        y += row_h - 4
+
+        # Övre sektion
+        self._draw_result_row(frame, "Ovre del:", f"{score_upper.total} p",
+                              pad_l, pad_r, y, scale, (200, 200, 200))
+        y += row_h
+        bonus_col = (70, 210, 70) if score_upper.bonus > 0 else (110, 110, 110)
+        self._draw_result_row(frame, "Bonus:", f"{score_upper.bonus} p",
+                              pad_l, pad_r, y, scale, bonus_col)
+        y += row_h
+        self._draw_result_row(frame, "Ovre total:", f"{score_upper.upper_total} p",
+                              pad_l, pad_r, y, scale, (255, 210, 60))
+        y += row_h + 8
+
+        cv2.line(frame, (pad_l, y), (pad_r, y), (70, 70, 70), 1)
+        y += row_h - 10
+
+        # Nedre sektion
+        self._draw_result_row(frame, "Nedre del:", f"{score_lower.total} p",
+                              pad_l, pad_r, y, scale, (200, 200, 200))
+        y += row_h + 8
+
+        # Grand total
+        cv2.line(frame, (pad_l, y), (pad_r, y), (100, 100, 100), 1)
+        y += row_h - 10
+        grand = score_upper.upper_total + score_lower.total
+        self._put_centered(frame, f"TOTALT:  {grand}  poang", w, y, 0.90, (80, 230, 255), 2)
+        y += row_h + 14
+
+        # Restart-instruktion
+        cv2.line(frame, (pad_l, y), (pad_r, y), (60, 60, 60), 1)
+        y += 22
+        self._put_centered(frame, "SPACE / R  =  Spela igen", w, y, 0.55, (145, 145, 145), 1)
+
+    def _draw_result_row(self, frame, label: str, value: str,
+                         pad_l: int, pad_r: int, y: int,
+                         scale: float, val_col: tuple) -> None:
+        """Rita en rad med vänsterjusterad label och högerjusterat värde."""
+        cv2.putText(frame, label, (pad_l, y),
+                    self.FONT, scale, (150, 150, 150), 1, cv2.LINE_AA)
+        (vw, _), _ = cv2.getTextSize(value, self.FONT, scale, 1)
+        cv2.putText(frame, value, (pad_r - vw, y),
+                    self.FONT, scale, val_col, 1, cv2.LINE_AA)
 
     def _draw_score_row(self, frame, row: dict,
-                        pad_l: int, pad_r: int, y: int, row_h: int) -> None:
+                        pad_l: int, pad_r: int, y: int, row_h: int,
+                        stryk_mode: bool = False) -> None:
         """
         Rita en kategorirad i score-popup.
 
-        Tre tillstånd:
-          locked  → grå text + [VALD]
-          ej valid → grå text, ingen tangent, score "0"
-          valbar  → vit label, grön score (eller grå om 0)
+        Fyra tillstånd:
+          struck   → mörk röd + [STRUKEN]
+          locked   → grå text + [VALD]
+          ej valid → grå text, ingen tangent (men klickbar i strykläge)
+          valbar   → vit label, grön score (eller grå om 0)
         """
+        struck = row.get("struck", False)
         locked = row["locked"]
         valid  = row.get("valid", True)
 
-        if locked:
+        if struck:
+            # Struken kategori — mörk röd
+            label_col = (55, 55, 170)
+            score_col = (55, 55, 170)
+            label_txt = f"  {row['label']}  [STRUKEN]"
+            score_txt = "0"
+        elif locked:
             label_col = (85, 85, 85)
             score_col = (85, 85, 85)
             label_txt = f"  {row['label']}  [VALD]"
             score_txt = str(row["score"])
+        elif stryk_mode:
+            # Strykläge aktiv — alla olåsta kategorier är klickbara (0 poäng)
+            label_col = (100, 100, 200)
+            score_col = (100, 100, 200)
+            label_txt = f"[{row['hotkey']}] {row['label']}"
+            score_txt = "0"
         elif not valid:
             label_col = (80, 80, 80)
             score_col = (80, 80, 80)

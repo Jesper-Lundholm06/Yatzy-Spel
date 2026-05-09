@@ -73,6 +73,14 @@ class YatzyScoreUpper:
         """Returnerar True om kategorin redan har ett registrerat värde."""
         return self._scores[key] is not None
 
+    def is_complete(self) -> bool:
+        """True när alla 6 övre kategorier har ett värde (spelet kan avslutas)."""
+        return all(v is not None for v in self._scores.values())
+
+    def reset(self) -> None:
+        """Återställ alla kategorier — används vid omstart av spelet."""
+        self._scores = {key: None for key, _, _, _ in UPPER_CATEGORIES}
+
     # ------------------------------------------------------------------
     # Summor
     # ------------------------------------------------------------------
@@ -157,6 +165,7 @@ class YatzyScoreLower:
         self._scores: dict[str, int | None] = {
             key: None for key, _, _ in LOWER_CATEGORIES
         }
+        self._struck: set[str] = set()   # kategorier som stryks (0 poäng, permanent låsta)
 
     # ------------------------------------------------------------------
     # Beräkning
@@ -246,8 +255,32 @@ class YatzyScoreLower:
         self._scores[key] = score
         return True
 
+    def strike(self, key: str) -> bool:
+        """
+        Struk en kategori — sätter poäng till 0 och låser den permanent.
+
+        Returnerar False om kategorin redan är vald eller struken.
+        """
+        if self.is_locked(key):
+            return False
+        self._struck.add(key)
+        self._scores[key] = 0
+        return True
+
     def is_locked(self, key: str) -> bool:
         return self._scores[key] is not None
+
+    def is_struck(self, key: str) -> bool:
+        return key in self._struck
+
+    def is_complete(self) -> bool:
+        """True när alla 9 nedre kategorier har ett värde (spelet kan avslutas)."""
+        return all(v is not None for v in self._scores.values())
+
+    def reset(self) -> None:
+        """Återställ alla kategorier och stryk — används vid omstart av spelet."""
+        self._scores = {key: None for key, _, _ in LOWER_CATEGORIES}
+        self._struck = set()
 
     # ------------------------------------------------------------------
     # Summor
@@ -276,6 +309,7 @@ class YatzyScoreLower:
         result = []
         for key, label, hotkey in LOWER_CATEGORIES:
             locked = self.is_locked(key)
+            struck = self.is_struck(key)
             if locked:
                 score, valid = self._scores[key], True
             else:
@@ -285,6 +319,7 @@ class YatzyScoreLower:
                 "label":  label,
                 "score":  score,
                 "locked": locked,
+                "struck": struck,
                 "valid":  valid,
                 "hotkey": hotkey,
             })

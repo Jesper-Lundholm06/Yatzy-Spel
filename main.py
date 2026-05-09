@@ -32,6 +32,18 @@ score_upper = YatzyScoreUpper()
 score_lower = YatzyScoreLower()
 
 
+def _on_score_registered() -> None:
+    """Anropas efter varje lyckad poängregistrering eller strykning."""
+    grand = score_upper.upper_total + score_lower.total
+    print(f"DEBUG TOTAL: upper={score_upper.upper_total}  lower={score_lower.total}  grand={grand}")
+    if score_upper.is_complete() and score_lower.is_complete():
+        game_state.game_over      = True
+        game_state.show_score_menu = False
+        game_state.stryk_mode     = False
+    else:
+        game_state.start_new_round()
+
+
 def frame_callback(frame):
     frame_width = frame.shape[1]
 
@@ -55,9 +67,14 @@ def frame_callback(frame):
     # 5. Rita header + bottom-statusrad
     overlay.draw_ui(frame, game_state)
 
-    # 6. Rita score-popup ovanpå allt om den är aktiv
+    # 6. Rita score-popup om den är aktiv
     if game_state.show_score_menu:
-        overlay.draw_score_popup(frame, score_upper, score_lower, game_state.dice_values)
+        overlay.draw_score_popup(frame, score_upper, score_lower,
+                                 game_state.dice_values, game_state.stryk_mode)
+
+    # 7. Resultatskärm ovanpå allt när spelet är slut
+    if game_state.game_over:
+        overlay.draw_game_over(frame, score_upper, score_lower)
 
     return frame
 
@@ -65,20 +82,46 @@ def frame_callback(frame):
 def key_callback(key: int) -> None:
     hotkey = chr(key) if 0 <= key <= 127 else ""
 
+    # ── Game over-läge: enda tillåtna åtgärd är att starta om ──────────
+    if game_state.game_over:
+        if key == ord(" ") or hotkey == "r":
+            score_upper.reset()
+            score_lower.reset()
+            game_state.game_over = False
+            game_state.start_new_round()
+        return
+
+    # ── Normalt spelläge ────────────────────────────────────────────────
     if game_state.show_score_menu:
-        if hotkey in HOTKEY_MAP:
-            # Övre sektion: tangent 1–6
+        # Stryk kräver att alla 3 kast är använda och minst en ledig kategori finns
+        can_stryk = (
+            game_state.roll_count >= GameState.MAX_ROLLS
+            and any(not score_lower.is_locked(k) for k in LOWER_HOTKEY_MAP.values())
+        )
+
+        if hotkey == "s":
+            if game_state.stryk_mode:
+                game_state.stryk_mode = False
+            elif can_stryk:
+                game_state.stryk_mode = True
+
+        elif game_state.stryk_mode and hotkey in LOWER_HOTKEY_MAP:
+            if score_lower.strike(LOWER_HOTKEY_MAP[hotkey]):
+                _on_score_registered()
+
+        elif not game_state.stryk_mode and hotkey in HOTKEY_MAP:
             if score_upper.register(HOTKEY_MAP[hotkey], game_state.dice_values):
-                game_state.start_new_round()
-        elif hotkey in LOWER_HOTKEY_MAP:
-            # Nedre sektion: tangent a–i
+                _on_score_registered()
+
+        elif not game_state.stryk_mode and hotkey in LOWER_HOTKEY_MAP:
             if score_lower.register(LOWER_HOTKEY_MAP[hotkey], game_state.dice_values):
-                game_state.start_new_round()
+                _on_score_registered()
+
         elif key == ord(" ") and game_state.can_roll():
-            # Stäng popup utan att välja (bara tillåtet om kast kvar)
             game_state.show_score_menu = False
+            game_state.stryk_mode = False
+
     elif key == ord(" ") and game_state.can_roll():
-        # Nytt kast → öppna popup
         game_state.roll()
         game_state.show_score_menu = True
 

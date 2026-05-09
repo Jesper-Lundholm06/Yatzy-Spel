@@ -2,6 +2,58 @@
 
 ---
 
+## 2026-05-09 — Game Over + Resultatskärm
+
+### Syfte
+Spelet avslutas automatiskt när alla 15 kategorier (övre + nedre) har ett värde. Resultatskärm med poänguppdelning visas, SPACE/R startar om.
+
+### Implementering
+
+**Slutdetektering:** `_on_score_registered()` i main.py anropas efter varje lyckad poängval/strykning. Kollar `score_upper.is_complete() and score_lower.is_complete()` → sätter `game_state.game_over = True`.
+
+**Blockering:** `key_callback` hanterar game_over-läget överst med `return` — inga kast, inga poängval möjliga.
+
+**Omstart:** SPACE/R → `score_upper.reset()`, `score_lower.reset()`, `game_state.game_over = False`, `start_new_round()`.
+
+**UI:** `draw_game_over()` i UIOverlay dimmar 74%, visar centrerad ruta (guldbård) med övre/bonus/övre total/nedre/grand total + restart-instruktion. Renderas sist i `frame_callback` (ovanpå allt).
+
+### Ändrade filer
+- `yatzy_score.py` — `is_complete()`, `reset()` på båda klasser
+- `game_state.py` — `game_over: bool = False`
+- `main.py` — `_on_score_registered`, game_over-hantering i callbacks
+- `ui_overlay.py` — `draw_game_over`, `_draw_result_row`
+- `CLAUDE.md`, `prompt.md` — dokumentation
+
+---
+
+## 2026-05-09 — Stryk-funktion (nedre sektion)
+
+### Syfte
+Implementera en korrekt stryk-funktion i Yatzy. Spelaren ska kunna aktivera strykläge med [s], sedan välja en nedre kategori (a–i) att stryka (0 poäng, permanent låst). Kräver att alla 3 kast är gjorda.
+
+### Regler
+- Stryk kräver `roll_count == MAX_ROLLS`
+- Minst en olåst nedre kategori måste finnas
+- Struken kategori: score=0, permanent låst, kan inte ändras
+- Övre sektion kan inte strukas
+
+### Implementering
+- `GameState.stryk_mode: bool` — ny flagga, återställs i `start_new_round()`
+- `YatzyScoreLower._struck: set[str]` + `is_struck()` + `strike()` — ny logik
+- `rows()` exponerar `struck`-nyckel per rad
+- `key_callback`: s-tangent togglar strykläge; i strykläge → `strike()` istället för `register()`; 1–6 blockerade i strykläge
+- `draw_score_popup(stryk_mode)` — röd kantlinje i strykläge, uppdaterad instruktionstext
+- `_draw_score_row(stryk_mode)` — nytt tillstånd: struck (mörk röd + [STRUKEN]), olåsta kategorier visas klickbara i strykläge
+
+### Ändrade filer
+- `game_state.py` — `stryk_mode`
+- `yatzy_score.py` — `_struck`, `is_struck`, `strike`, `rows`
+- `main.py` — key_callback, frame_callback
+- `ui_overlay.py` — draw_score_popup, _draw_score_row
+- `CLAUDE.md`, `prompt.md` — dokumentation
+
+---
+
 ## 2026-05-09 — Bugfix: Två par kräver nu två OLIKA värden
 
 ### Problem
