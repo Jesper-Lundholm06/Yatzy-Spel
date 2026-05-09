@@ -2,6 +2,38 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
+## 2026-05-10 — Bot: Förbättrad strategi + visa vad boten väljer
+
+### Syfte
+Boten väljer inte längre "Chans" som förstahandsval. En greedy prioriteringsstrategi implementerades och en "BOT VALDE"-banner visas i 2.5s efter varje botdrag.
+
+### Prioriteringsstrategi (_choose_category i bot_logic.py)
+1. Bonus-jakt: om `bonus_progress > 0` och minst 2 av ett värde → övre kategori (6→1)
+2. Starka kombinationer: Yatzy → Kåk → Stor stege → Liten stege → Fyrtal → Tretal → Två par → Par
+3. Övre sektion: högst poäng av tillgängliga kategorier
+4. Chans: sista option med faktisk poäng
+5. Stryk/Fallback: om inget ger poäng
+
+### Fas 4 i bot-fas-maskinen
+- `_choice_made`, `_last_choice_label`, `_pending_registered` — ny state per val
+- `is_bot_showing_choice()` / `get_choice_label()` — publika funktioner
+- `_BOT_CHOICE_DISPLAY_DELAY = 2.5` s
+- Fas 4 anropar `_pending_registered()` (= `on_registered`) efter delay
+
+### UI (draw_bot_choice)
+- `UIOverlay.draw_bot_choice(frame, label)` — guldbandad banner vid 40% av skärmhöjden
+- "BOT VALDE:" i grå text, kategorietiketten i guld `(0, 215, 255)`
+- Anropas i `frame_callback` steg 8b när `bot_logic.is_bot_showing_choice()` är True
+
+### Ändrade filer
+- `bot_logic.py` — komplett omskrivning
+- `ui_overlay.py` — `draw_bot_choice()` tillagd
+- `main.py` — steg 8b i `frame_callback`
+
+---
+
 # Development Logging Policy
 
 Från och med nu gäller:
@@ -85,6 +117,143 @@ CameraModule.start()
 ## prompt.md
 
 Filen `prompt.md` används som loggbok för Claude-sessioner. Vid varje ny session som förändrar projektet ska en ny sektion läggas till **överst** i filen med datum, syfte, skapade/ändrade filer och teknisk sammanfattning.
+
+---
+
+## 2026-05-10 — Bot: Visa tärningar 4.5s innan popup öppnas
+
+### Syfte
+Boten visar sina slumptärningar tydligt på skärmen i 4.5 sekunder så spelaren hinner se dem, innan popup-menyn öppnas och kategorival görs.
+
+### Fas-maskin (bot_logic.py)
+| Fas | Trigger | Åtgärd | Väntan |
+|---|---|---|---|
+| 1 | `roll_count==0, not _bot_rolling` | `_bot_roll()`, `_bot_rolling=True` | 4.5s |
+| 2 | `_bot_rolling==True, timer>=4.5s` | `_bot_rolling=False`, `show_score_menu=True` | 1.2s |
+| 3 | `show_score_menu, not can_roll(), timer>=1.2s` | `_choose_category()` | — |
+
+### Isolering
+- `_bot_rolling: bool` — modul-variabel, enbart läst av `is_bot_rolling()`
+- `is_bot_rolling()` — publik funktion för main.py att fråga
+- `_live_values` och kamerans värden rörs aldrig
+
+### UI (ui_overlay.py)
+- `draw_bot_rolling(frame, dice_values)` — ny metod
+  - Halvtransparent grön-kantad banner i mitten (y=40% av skärmen)
+  - "BOT KASTAR" rubrik
+  - `[3]  [5]  [1]  [6]  [2]` — botens tärningar synliga
+
+### main.py (ett anrop tillagt)
+- Steg 8: `if bot_logic.is_bot_rolling(): overlay.draw_bot_rolling(frame, game_state.dice_values)`
+- Steg 9: `bot_logic.bot_act(...)` (oförändrad logik)
+
+### Ändrade filer
+- `bot_logic.py` — fas-maskin med timing, `is_bot_rolling()`, `_bot_rolling`-flagga
+- `ui_overlay.py` — `draw_bot_rolling()`
+- `main.py` — ett steg tillagt i `frame_callback`
+
+---
+
+## 2026-05-10 — Bugfix: Bot använder egna slumptärningar (isolerat från kamera)
+
+### Problem
+Boten använde `game_state.roll()` som kopierar `_live_values` (YOLO/kamera) till `dice_values`. Boten spelade alltså med de fysiska tärningarna istället för sina egna.
+
+### Fix (enbart bot_logic.py)
+- `_bot_dice: list[int]` — modul-nivå isolerad lista för botens egna tärningar
+- `_bot_roll(game_state)` ny funktion:
+  - Genererar `[random.randint(1,6) for _ in range(5)]`
+  - Skriver **direkt** till `game_state.dice_values` — **rör aldrig** `_live_values`
+  - Sätter `roll_count = MAX_ROLLS` direkt (ett kast, ingen om-kastlogik)
+- Fas-maskinen förenklad: Fas 1 = `_bot_roll` + öppna popup, Fas 2 = välj kategori
+- `game_state.roll()` anropas **inte** längre av boten
+
+### Designregel
+`game_state.dice_values` = bekräftade spelvärdena (sätts av roll() eller _bot_roll).
+`game_state._live_values` = kamerans aktuella YOLO-läsning (sätts av update_live).
+Dessa är separata — boten skriver till dice_values, kameran uppdaterar _live_values.
+
+### Ändrade filer
+- `bot_logic.py` — `_bot_dice`, `_bot_roll`, förenklad fas-maskin
+
+---
+
+## 2026-05-10 — Bot (greedy) + Flerspelars game over-skärm (steg 6–7)
+
+### Bot-strategi (bot_logic.py)
+
+**Ny fil: `bot_logic.py`**
+- `BOT_ACTION_DELAY = 1.0s` — fördröjning mellan bot-åtgärder (synlig spelupplevelse)
+- `reset_timer()` — anropas när botens tur börjar (efter `next_player()` eller omstart)
+- `bot_act(game_state, on_registered)` — anropas varje frame, agerar bara om timer gått ut
+- `_execute()` — fas-maskin: Fas 1 = initialt kast, Fas 2 = kasta om, Fas 3 = välj kategori
+- `_choose_category()` — greedy: scanna övre + nedre, välj max score; om allt 0 → stryk första lediga nedre; fallback = registrera övre med 0
+
+**main.py-integrering**
+- `bot_logic.bot_act()` anropas i steg 8 i `frame_callback`
+- `key_callback` returnerar tidigt om `current_player.is_bot` (blockerar tangenttryckningar)
+- `reset_timer()` anropas i tre situationer: uppstart (om bot är första), efter `next_player()`, efter omstart
+
+### Game over-skärm (flerspelarversion)
+
+`draw_game_over(frame, players: list)` — ny signatur
+- Beräknar `totals[]` och `winner_idx = totals.index(max(totals))`
+- Boxhöjd anpassas till antal spelare: `max(inner_h, int(h*0.42))`
+- Kolumntabell: Spelare | Övre | Nedre | Totalt
+- Vinnare: guld text `(0, 215, 255)` + `[VINNARE]`-suffix; övriga: grå
+- SPACE/R → omstart (återställer alla spelares scores + spelarindex)
+
+### Ändrade filer
+- `bot_logic.py` (ny)
+- `main.py` — bot_logic-import, bot_act i frame_callback, input-blockering, reset_timer-anrop
+- `ui_overlay.py` — draw_game_over reskriven (flerspelarversion)
+
+---
+
+## 2026-05-10 — Flerspelarsystem (steg 1–5)
+
+### Syfte
+Bygga om systemet till att stödja 1–4 spelare med turordning, individuella poängtavlor och startmeny. Bot-stöd förbereds (ej AI-logik ännu).
+
+### Nya filer
+
+**player.py**
+- `Player(name, is_bot=False)` — namn, bot-flagga, egna `score_upper` + `score_lower`
+
+**start_menu.py**
+- `show_start_menu() → (int, bool)` — tkinter-dialog, returnerar (antal_spelare, har_bot)
+- Mörkt tema, radioknappar 1–4, kryssruta för bot, Start-knapp
+
+### Ändringar per fil
+
+**game_state.py**
+- `__init__(players: list)` — tar nu en lista av Player-objekt
+- `current_player_index: int = 0`
+- `current_player` — property, returnerar `players[current_player_index]`
+- `next_player()` — ökar index (modulo antal), anropar `start_new_round()`
+- `start_new_round()` återställer INTE `current_player_index` eller `game_over`
+
+**main.py**
+- Kör `show_start_menu()` vid uppstart, skapar Player-lista
+- `GameState(players)` istället för `GameState()`
+- Modul-nivå `score_upper`/`score_lower` borttagna — allt via `game_state.current_player`
+- `_on_score_registered()`: kollar om ALLA spelares kort är klara → game_over, annars `next_player()`
+- Omstart återställer alla spelares scores + `current_player_index = 0`
+
+**ui_overlay.py**
+- `HEADER_H` 100 → 120 px (20 px extra för spelarnamnrad)
+- `_draw_header(..., player_name, is_bot)` — visar "TUR: Spelare 1" (grön) eller "BOT: Bot" (blå)
+- Separator-linje vid y=20 delar spelarrad från tärningsboxar
+
+### Tangentmappning (oförändrad)
+Alla tangenter fungerar som förut — SPACE, 1–6, a–i, s, r — men nu per aktiv spelare.
+
+### Ändrade filer
+- `player.py` (ny)
+- `start_menu.py` (ny)
+- `game_state.py`
+- `main.py`
+- `ui_overlay.py`
 
 ---
 

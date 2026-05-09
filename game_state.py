@@ -11,11 +11,14 @@ och ingen renderingskod.
 
 
 class GameState:
-    """Håller tillståndet för en aktiv spelrunda."""
+    """Håller tillståndet för en aktiv spelrunda och turordningen."""
 
     MAX_ROLLS = 3
 
-    def __init__(self):
+    def __init__(self, players: list):
+        self.players              = players            # lista av Player-objekt
+        self.current_player_index = 0
+
         self.roll_count:     int        = 0
         self.dice_values:    list       = ["-"] * 5   # bekräftade värden från senaste kast
         self.locked_dice:    list[bool] = [False] * 5
@@ -24,6 +27,11 @@ class GameState:
         self.game_over:      bool      = False        # True → spelet slut, visa resultatskärm
 
         self._live_values: list = ["-"] * 5            # YOLO-läsning från senaste frame
+
+    @property
+    def current_player(self):
+        """Returnerar spelaren vars tur det är."""
+        return self.players[self.current_player_index]
 
     # ------------------------------------------------------------------
     # Anropas varje frame av main.py
@@ -60,8 +68,13 @@ class GameState:
     # Ny runda
     # ------------------------------------------------------------------
 
+    def next_player(self) -> None:
+        """Gå vidare till nästa spelare och återställ rundan."""
+        self.current_player_index = (self.current_player_index + 1) % len(self.players)
+        self.start_new_round()
+
     def start_new_round(self) -> None:
-        """Återställ allt inför en ny runda."""
+        """Återställ rundans tillstånd (behåller spelarindex och game_over)."""
         self.roll_count      = 0
         self.dice_values     = ["-"] * 5
         self.locked_dice     = [False] * 5

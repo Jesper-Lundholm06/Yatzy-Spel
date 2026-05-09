@@ -2,6 +2,117 @@
 
 ---
 
+## 2026-05-10 — Bot: Förbättrad strategi + visa vad boten väljer
+
+### Syfte
+Boten väljer inte längre alltid "Chans" direkt. En prioritetsordning implementerades och spelaren kan se vad boten valde i 2.5s efter varje drag.
+
+### Prioritetsordning (_choose_category)
+1. Bonus-jakt: om `bonus_progress > 0` och `counts.get(face) >= 2` → välj övre kategori (6→1)
+2. Starka kombinationer: Yatzy → Kåk → Stor stege → Liten stege → Fyrtal → Tretal → Två par → Par
+3. Övre sektion: välj med högst poäng (även count == 1)
+4. Chans: sista möjligheten med faktisk poäng
+5. Stryk: fallback om ingenting ger poäng
+
+### "BOT VALDE"-banner (Fas 4)
+- `is_bot_showing_choice()` / `get_choice_label()` exponeras från bot_logic
+- `draw_bot_choice(frame, label)` i UIOverlay — guldmarkerad banner t.ex. "BOT VALDE: Kåk  (25 p)"
+- Visas i 2.5s efter valet innan nästa spelare tar vid
+- Triggad i `frame_callback` steg 8b
+
+### Ändrade filer
+- `bot_logic.py` — komplett omskrivning med prioriteringsstrategi, Fas 4, `_choice_made`, `_last_choice_label`, `_pending_registered`
+- `ui_overlay.py` — `draw_bot_choice(frame, label)` tillagd
+- `main.py` — steg 8b i `frame_callback`
+- `CLAUDE.md`, `prompt.md`
+
+---
+
+## 2026-05-10 — Bot: Visa tärningar 4.5s innan popup öppnas
+
+### Syfte
+Boten visar sina slumptärningar synligt i 4.5s → popup öppnas → 1.2s → kategorival.
+
+### Fas-maskin
+- Fas 1: `_bot_roll()` → `_bot_rolling=True` (ingen popup)
+- Fas 2: efter 4.5s → `show_score_menu=True`
+- Fas 3: efter 1.2s → `_choose_category()`
+
+### UI
+- `draw_bot_rolling(frame, dice_values)` i UIOverlay — grön banner med "BOT KASTAR" + tärningsvärden
+- Anropas i `frame_callback` när `bot_logic.is_bot_rolling()` är True
+
+### Ändrade filer
+- `bot_logic.py` — ny fas-maskin, `is_bot_rolling()`, `_bot_rolling`
+- `ui_overlay.py` — `draw_bot_rolling()`
+- `main.py` — ett anrop tillagt
+- `CLAUDE.md`, `prompt.md`
+
+---
+
+## 2026-05-10 — Bugfix: Bot använder egna slumptärningar
+
+### Problem
+Boten anropade `game_state.roll()` som läser `_live_values` (kamera/YOLO) → boten spelade med de fysiska tärningarna.
+
+### Fix
+Ny `_bot_roll(game_state)` i `bot_logic.py`:
+- Genererar `[random.randint(1,6) for _ in range(5)]` → lagras i `_bot_dice`
+- Skriver direkt till `game_state.dice_values` (rör ALDRIG `_live_values`)
+- Sätter `roll_count = MAX_ROLLS` → ett kast, direkt till kategorival
+- `game_state.roll()` anropas inte alls av boten
+
+Fas-maskinen förenklad: Fas 1 = slumpkast, Fas 2 = kategorival.
+
+### Ändrade filer
+- `bot_logic.py` (enbart)
+- `CLAUDE.md`, `prompt.md`
+
+---
+
+## 2026-05-10 — Bot (greedy) + Flerspelars game over-skärm (steg 6–7)
+
+### Bot
+- `bot_logic.py` (ny): timer-baserad fas-maskin — kasta 3 gånger, välj max score (greedy), stryk om allt 0
+- `reset_timer()` anropas vid varje turstart för att ge 1s fördröjning
+- `key_callback` blockerar all input under botens tur
+- `frame_callback` anropar `bot_act()` varje frame
+
+### Game over
+- `draw_game_over(frame, players)` — kolumntabell med alla spelares Övre/Nedre/Totalt
+- Vinnaren markeras med guld + `[VINNARE]`
+- Boxhöjd anpassas automatiskt till 1–4 spelare
+
+### Ändrade filer
+- `bot_logic.py` (ny), `main.py`, `ui_overlay.py`, `CLAUDE.md`, `prompt.md`
+
+---
+
+## 2026-05-10 — Flerspelarsystem (steg 1–5)
+
+### Syfte
+Stöd för 1–4 spelare med turordning, individuella poängtavlor, startmeny och bot-placeholder. "Botten" (flerspelars game over-skärm) läggs till i nästa session.
+
+### Arkitektur
+- `Player`-klass (player.py): namn, is_bot, egna score_upper + score_lower
+- `show_start_menu()` (start_menu.py): tkinter-dialog → (num_players, has_bot)
+- `GameState(players)`: aktiv spelare via current_player_index + next_player()
+- main.py: all score-access via `game_state.current_player.score_upper/lower`
+- ui_overlay.py: header visar spelarnamn (grön=människa, blå=bot)
+
+### Flöde
+1. Startmeny → välj 1–4 spelare + ev. bot → Starta spelet
+2. Spelet skapar Player-objekt (sista = Bot om markerat)
+3. Per runda: aktiv spelare kastar, väljer poäng/stryk → next_player()
+4. Game over när ALLA spelares kort är klara
+
+### Ändrade filer
+- `player.py` (ny), `start_menu.py` (ny)
+- `game_state.py`, `main.py`, `ui_overlay.py`
+- `CLAUDE.md`, `prompt.md`
+
+---
+
 ## 2026-05-09 — Game Over + Resultatskärm
 
 ### Syfte
