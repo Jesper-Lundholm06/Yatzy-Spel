@@ -22,6 +22,7 @@ class CameraModule:
     def __init__(self, camera_index: int = 1):
         self._frame_callback = None
         self._key_callback   = None
+        self._mouse_callback = None
         self.capture = self._open_camera(camera_index)
 
     # ------------------------------------------------------------------
@@ -74,6 +75,14 @@ class CameraModule:
         """
         self._key_callback = callback
 
+    def set_mouse_callback(self, callback):
+        """
+        Registrerar en callback för musklick (vänster knapp).
+
+        Callback-signatur: callback(x: int, y: int) -> None
+        """
+        self._mouse_callback = callback
+
     # ------------------------------------------------------------------
     # Huvudloop
     # ------------------------------------------------------------------
@@ -87,6 +96,7 @@ class CameraModule:
         # Skapa fönster och sätt fullskärm innan loopen startar
         cv2.namedWindow(self.WINDOW_TITLE, cv2.WINDOW_NORMAL)
         cv2.setWindowProperty(self.WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.setMouseCallback(self.WINDOW_TITLE, self._on_mouse)
 
         consecutive_failures = 0
 
@@ -120,6 +130,10 @@ class CameraModule:
                 self._key_callback(key)
 
         self._release()
+
+    def _on_mouse(self, event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN and self._mouse_callback is not None:
+            self._mouse_callback(x, y)
 
     # ------------------------------------------------------------------
     # Avslut

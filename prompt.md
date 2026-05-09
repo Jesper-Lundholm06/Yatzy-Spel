@@ -2,6 +2,56 @@
 
 ---
 
+## 2026-05-10 — Bugfix: Sidopanelen kapas i höjdled
+
+### Problem
+Kategorivalet i sidopanelen klipptes av längst ner — de sista nedre kategorierna (Chans, Yatzy m.fl.) syntes inte. Orsak: radhöjden `row_h = 23` var hårdkodad och tog inte hänsyn till skärmens faktiska höjd.
+
+### Fix
+`row_h` beräknas nu dynamiskt utifrån faktisk tillgänglig panelhöjd:
+```python
+avail  = panel_bot - y - 8        # faktisk höjd att fördela
+row_h  = max(13, min(28, (avail - 144) // 15))   # 15 rader delar på utrymmet
+```
+Alla mellanrum (gaps) skalas proportionellt med `row_h` via `g_sm` och `g_med`, så att ingenting kapas oavsett kameraupplösning (480p–1080p). Bonus-raden komprimerades till en enda rad istället för två.
+
+### Ändrade filer
+- `ui_overlay.py` — `_panel_score` + `_panel_row` (ny `scale`-parameter)
+- `CLAUDE.md`, `prompt.md`
+
+---
+
+## 2026-05-10 — UI-uppgradering: slide-in panel, rundade tärningar, modern statusrad
+
+### Syfte
+Modernt, rent och spel-likt UI utan att ändra spellogiken. Score-popup ersatt med
+animerad slide-in sidopanel till vänster. Tärningsboxar fick rundade hörn och skugga.
+
+### Ändringar
+- `ui_overlay.py` komplett omskrivning:
+  - `__init__`: animationsstate `_panel_x`, `_panel_open`
+  - `handle_click(x, y)`: togglar panelen om toggle-knappen klickades
+  - `_draw_header`: rundade tärningsboxar med skugga via `_draw_rounded_rect`
+  - `_draw_bottom`: slankare 52px statusrad med spelarnamn (vänster), fastext (mitten), poäng (höger)
+  - `_draw_side_panel`: slide-in panel (340px, 30px/frame), auto-öppnas vid kategorival
+  - `_draw_toggle_button`: ▶/◀-knapp på panelens högra kant
+  - `_panel_scoreboard`: visar alla spelares totaler med aktiv-highlight
+  - `_panel_score`: kategorival (övre + nedre) med instruktion — ersätter gamla popup
+  - `_draw_rounded_rect` / `_draw_rounded_rect_border`: hjälpmetoder för rundade hörn
+  - `draw_score_popup` borttagen
+- `camera_module.py`: `set_mouse_callback`, `_on_mouse`, `_mouse_callback`-state,
+  `cv2.setMouseCallback` i `start()`
+- `main.py`: `mouse_callback` funktion, `camera.set_mouse_callback(mouse_callback)`,
+  popup-anrop ersatt med kommentar (hanteras nu av `draw_ui`)
+
+### Ändrade filer
+- `ui_overlay.py`
+- `camera_module.py`
+- `main.py`
+- `CLAUDE.md`, `prompt.md`
+
+---
+
 ## 2026-05-10 — Bot: Förbättrad strategi + visa vad boten väljer
 
 ### Syfte
@@ -70,21 +120,25 @@ Fas-maskinen förenklad: Fas 1 = slumpkast, Fas 2 = kategorival.
 
 ---
 
-## 2026-05-10 — Bot (greedy) + Flerspelars game over-skärm (steg 6–7)
+## 2026-05-10 — Bot (grundversion, greedy) + Flerspelars game over-skärm (steg 6–7)
 
-### Bot
-- `bot_logic.py` (ny): timer-baserad fas-maskin — kasta 3 gånger, välj max score (greedy), stryk om allt 0
-- `reset_timer()` anropas vid varje turstart för att ge 1s fördröjning
-- `key_callback` blockerar all input under botens tur
-- `frame_callback` anropar `bot_act()` varje frame
+### Bot — grundversion
+Den första bot-implementeringen. Boten spelar automatiskt under sin tur utan att kräva användarinteraktion.
 
-### Game over
-- `draw_game_over(frame, players)` — kolumntabell med alla spelares Övre/Nedre/Totalt
-- Vinnaren markeras med guld + `[VINNARE]`
-- Boxhöjd anpassas automatiskt till 1–4 spelare
+**Strategi (greedy):** Boten provar varje tillgänglig kategori och väljer den som ger mest poäng just nu. Om ingenting ger poäng struker boten en kategori. Strategin är snabb men inte optimal — den tänker inte framåt.
+
+**Fas-maskin:** Boten väntar 1 sekund mellan varje steg (kast, om-kast, kategorival) för att spelet ska se trovärdigt ut för spelaren. `bot_act()` anropas varje frame men agerar bara om timern gått ut.
+
+**Input-blockering:** All tangentinput är blockerad under botens tur så att spelaren inte kan störa.
+
+### Flerspelars game over-skärm
+`draw_game_over(frame, players)` fick en ny signatur som tar emot hela spelar-listan (tidigare visades bara en spelares resultat). Nu visas en kolumntabell med alla spelares Övre/Nedre/Totalt. Vinnaren markeras med guld och `[VINNARE]`. Boxhöjden anpassas automatiskt till 1–4 spelare.
 
 ### Ändrade filer
-- `bot_logic.py` (ny), `main.py`, `ui_overlay.py`, `CLAUDE.md`, `prompt.md`
+- `bot_logic.py` (ny fil)
+- `main.py` — bot_act i frame_callback, input-blockering, reset_timer
+- `ui_overlay.py` — draw_game_over omskriven
+- `CLAUDE.md`, `prompt.md`
 
 ---
 
@@ -574,6 +628,38 @@ Bugg 2 fixad: `_configure()` sätter nu `MJPG` som FOURCC *innan* upplösning s�
 ### Teknisk sammanfattning
 
 MJPG är komprimerat, universellt stött av USB-kameror och avkodas stabilt av OpenCV. Raw-format (YUY2/NV12) kräver att stride och byte-layout matchar exakt — vilket varierar per kamera och driver. Att tvinga MJPG eliminerar pixelformat-glitech helt.
+
+---
+
+## 2026-05-08 — Kamerarobusthet och bildkvalitet
+
+### Syfte
+Förbättra stabilitet och bildkvalitet utan att riskera att kameran slutar fungera.
+
+### Vad som gjordes
+- `CAP_DSHOW` testades som primär backend (stabilare än MSMF på Windows), med automatisk fallback till OpenCVs default om det misslyckas
+- Upplösning 1280×720 sattes via `CAP_PROP_FRAME_WIDTH/HEIGHT` med fallback till kamerans eget default
+- `CAP_PROP_AUTOFOCUS = 1` och `CAP_PROP_AUTO_EXPOSURE = 0.25` aktiverades (ignoreras tyst om kameran inte stöder dem)
+- `cv2.GaussianBlur(frame, (3, 3), 0)` lades till per frame för brusreducering — förbättrar YOLO-detektering utan märkbar suddighet
+- Felhantering: upp till 5 på varandra följande misslyckade frame-läsningar tolereras innan programmet avslutas
+
+### Ändrade filer
+- `camera_module.py`
+
+---
+
+## 2026-05-08 — Fullskärm och loggningspolicy
+
+### Syfte
+Göra kamerafönstret fullskärm och införa obligatorisk dokumentationspolicy för projektet.
+
+### Vad som gjordes
+- OpenCV-fönstret konfigurerades att starta i fullskärm via `cv2.namedWindow` + `cv2.setWindowProperty(WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN)` innan loopen startar
+- En permanent loggningspolicy skrevs in i `CLAUDE.md`: varje session som förändrar projektet måste dokumenteras med datum, syfte och ändrade filer
+
+### Ändrade filer
+- `camera_module.py`
+- `CLAUDE.md`
 
 ---
 

@@ -4,6 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## 2026-05-10 — UI-uppgradering: slide-in panel, rundade tärningar, modern statusrad
+
+### Syfte
+Modernare, renare spelkänsla utan att röra spellogiken.
+
+### Vad som ändrades (ui_overlay.py)
+- Score-popup borttagen — kategorival visas nu i slide-in-panelen
+- `_panel_x` animeras 30px/frame mot mål (0 = öppen, -340 = stängd)
+- Auto-öppnar när `show_score_menu` är True
+- Toggle-knapp (▶/◀) på panelens högra kant, musklick via `handle_click(x, y)`
+- Tärningsboxar: rundade hörn (r=10), skugga (offset 3px), guldkant vid låst
+- Statusrad: 52px, tre kolumner (spelarnamn | fastext | poäng)
+- `_draw_rounded_rect` + `_draw_rounded_rect_border`: återanvändbara hjälpmetoder
+
+### Ny arkitektur mouse-callback
+- `camera_module.py`: `set_mouse_callback`, `_on_mouse`, `cv2.setMouseCallback`
+- `main.py`: `mouse_callback(x, y)` → `overlay.handle_click(x, y)`
+
+### Ändrade filer
+- `ui_overlay.py` — komplett omskrivning
+- `camera_module.py` — mus-callback tillagd
+- `main.py` — popup-anrop borttaget, mus-callback kopplad
+
+---
+
 ## 2026-05-10 — Bot: Förbättrad strategi + visa vad boten väljer
 
 ### Syfte

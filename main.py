@@ -87,16 +87,10 @@ def frame_callback(frame):
     lock_zone.draw_zone(frame)
     lock_zone.draw_detections(frame, processed)
 
-    # 5. Rita header + bottom-statusrad
+    # 5. Rita header, bottom-bar och side-panel (inkl. kategorival om show_score_menu)
     overlay.draw_ui(frame, game_state)
 
-    # 6. Rita score-popup om den är aktiv
-    if game_state.show_score_menu:
-        p = game_state.current_player
-        overlay.draw_score_popup(frame, p.score_upper, p.score_lower,
-                                 game_state.dice_values, game_state.stryk_mode)
-
-    # 7. Resultatskärm ovanpå allt när spelet är slut
+    # 6. Resultatskärm ovanpå allt när spelet är slut
     if game_state.game_over:
         overlay.draw_game_over(frame, game_state.players)
         return frame
@@ -172,7 +166,12 @@ def key_callback(key: int) -> None:
         game_state.show_score_menu = True
 
 
+def mouse_callback(x: int, y: int) -> None:
+    overlay.handle_click(x, y)
+
+
 camera = CameraModule()
 camera.set_frame_callback(frame_callback)
 camera.set_key_callback(key_callback)
+camera.set_mouse_callback(mouse_callback)
 camera.start()
