@@ -2,6 +2,49 @@
 
 ---
 
+## 2026-05-09 — Fix: upper_total-property + bonuslogik verifierad
+
+### Kontext
+Användaren frågade om bonuslogiken stämmer och om `upper_total` (Summa + Bonus) saknades som begrepp.
+
+### Verifiering
+`bonus`-property är beräknad, aldrig lagrad — kan inte ges dubbelt. `total` summerar bara registrerade kategorier (`!= None`) vilket gör att bonus aktiveras automatiskt i rätt ögonblick.
+
+### Tillagda ändringar
+- `upper_total`-property tillagd i `YatzyScoreUpper`: `return self.total + self.bonus`
+- `ui_overlay.py` popup uppdaterad med "Ovre total: X" i gul accentfärg under Bonus-raden
+
+### Ändrade filer
+- `yatzy_score.py` — `upper_total`-property
+- `ui_overlay.py` — visar Övre total i popup
+
+---
+
+## 2026-05-09 — Poängsystem: nedre sektionen + grand total
+
+### Full Claude-prompt
+```text
+Implementera nedre sektionen: Ett par, Två par, Tretal, Fyrtal, Kåk,
+Liten stege, Stor stege, Chans, Yatzy.
+- calculate() → (score, valid) — ej valid = grå, ej valbar
+- Kåk: exakt count==3 + count==2, Yatzy exkluderas
+- Två par: floor(c/2) per värde, ta de två högsta
+- Tangenter a–i för nedre kategorier
+- Visa under övre sektionen i popup med grand total
+```
+
+### Sammanfattning
+`YatzyScoreLower` och `LOWER_HOTKEY_MAP` lades till i `yatzy_score.py`. `calculate()` returnerar `(score, bool)` — False-flaggan gör att ogiltiga kombinationer visas grått utan tangent. Kåk-logiken kontrollerar exakt `count==3` och `count==2` vilket automatiskt utesluter Yatzy (5 lika, inga sådana counts). Popup omskrevs med `_draw_score_row`-helper (3 tillstånd), radhöjd proportionell mot box_h, popup 91% av frame-höjden. Grand total visas längst ner.
+
+### Ändrade filer
+- `yatzy_score.py` — YatzyScoreLower, LOWER_CATEGORIES, LOWER_HOTKEY_MAP
+- `ui_overlay.py` — ny popup-signatur + _draw_score_row + nedre sektion
+- `main.py` — score_lower, a–i-tangenter
+- `CLAUDE.md` — ny loggsektion
+- `prompt.md` — denna loggsektion
+
+---
+
 ## 2026-05-09 — Poängsystem: övre sektionen (Ettor–Sexor, Summa, Bonus)
 
 ### Full Claude-prompt

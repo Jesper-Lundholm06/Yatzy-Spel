@@ -136,91 +136,144 @@ class UIOverlay:
     # Score-popup
     # ------------------------------------------------------------------
 
-    def draw_score_popup(self, frame, score_upper, dice_values: list) -> None:
+    def draw_score_popup(self, frame, score_upper, score_lower, dice_values: list) -> None:
         """
-        Rita score-popup med övre sektionens kategorier.
+        Rita score-popup med övre och nedre sektionen.
 
-        Visar potentiell poäng för ej valda kategorier och bekräftad
-        poäng (grå + [VALD]) för låsta. Renderas ovanpå allt annat.
+        Renderas ovanpå allt annat. Radhöjd beräknas proportionellt mot
+        popup-höjden så att layouten fungerar vid alla upplösningar.
 
         Args:
             frame:       OpenCV-frame (in-place).
             score_upper: YatzyScoreUpper-instans.
+            score_lower: YatzyScoreLower-instans.
             dice_values: Aktuella tärningsvärden från GameState.
         """
         h, w = frame.shape[:2]
 
-        # Dimma hela bakgrunden
+        # Dimma bakgrunden
         dim = frame.copy()
         cv2.rectangle(dim, (0, 0), (w, h), (0, 0, 0), -1)
         cv2.addWeighted(dim, 0.55, frame, 0.45, 0, frame)
 
-        # Popup-ruta — 50% bredd, 65% höjd
-        box_w = int(w * 0.50)
-        box_h = int(h * 0.65)
+        # Popup-ruta: 52% bredd, 91% höjd
+        box_w = int(w * 0.52)
+        box_h = int(h * 0.91)
         bx    = (w - box_w) // 2
         by    = (h - box_h) // 2
 
         cv2.rectangle(frame, (bx, by), (bx + box_w, by + box_h), (28, 28, 28), -1)
         cv2.rectangle(frame, (bx, by), (bx + box_w, by + box_h), (110, 110, 110), 2)
 
-        # --- Titel ---
-        self._put_centered(frame, "OVRE SEKTION", w, by + 30, 0.85, (255, 255, 255), 2)
-        cv2.line(frame, (bx + 16, by + 42), (bx + box_w - 16, by + 42), (75, 75, 75), 1)
+        pad_l = bx + 18
+        pad_r = bx + box_w - 18
 
-        # --- Kategorirader ---
-        rows      = score_upper.rows(dice_values)
-        row_y     = by + 68
-        row_step  = int(box_h * 0.083)   # proportionell radbredd
-        pad_left  = bx + 20
-        pad_right = bx + box_w - 20
+        # Radhöjd: box_h - fast utrymme delat på 20 rader (6 övre + 9 nedre + 5 total-rader)
+        row_h = max(22, (box_h - 165) // 20)
+        y     = by + 26
 
-        for row in rows:
-            if row["locked"]:
-                label_col = (90, 90, 90)
-                score_col = (90, 90, 90)
-                label_txt = f"  {row['label']}  [VALD]"
-                score_txt = str(row["score"])
-            else:
-                label_col = (215, 215, 215)
-                score_col = (70, 210, 70) if row["score"] > 0 else (130, 130, 130)
-                label_txt = f"[{row['hotkey']}]  {row['label']}"
-                score_txt = f"+{row['score']}"
+        # ── ÖVRE SEKTION ─────────────────────────────────────────────
+        self._put_centered(frame, "OVRE SEKTION", w, y, 0.72, (255, 255, 255), 2)
+        y += 12
+        cv2.line(frame, (pad_l, y), (pad_r, y), (75, 75, 75), 1)
+        y += row_h - 4
 
-            cv2.putText(frame, label_txt, (pad_left, row_y),
-                        self.FONT, 0.62, label_col, 1, cv2.LINE_AA)
+        for row in score_upper.rows(dice_values):
+            self._draw_score_row(frame, row, pad_l, pad_r, y, row_h)
+            y += row_h
 
-            (sw, _), _ = cv2.getTextSize(score_txt, self.FONT, 0.62, 1)
-            cv2.putText(frame, score_txt, (pad_right - sw, row_y),
-                        self.FONT, 0.62, score_col, 1, cv2.LINE_AA)
+        # Övre summor
+        y += 4
+        cv2.line(frame, (pad_l, y), (pad_r, y), (70, 70, 70), 1)
+        y += row_h - 6
 
-            row_y += row_step
+        cv2.putText(frame, f"Summa:  {score_upper.total}", (pad_l, y),
+                    self.FONT, 0.58, (200, 200, 200), 1, cv2.LINE_AA)
+        y += row_h - 4
 
-        # --- Separator + totaler ---
-        sep_y = row_y + 4
-        cv2.line(frame, (bx + 16, sep_y), (bx + box_w - 16, sep_y), (75, 75, 75), 1)
-
-        total_y = sep_y + 24
-        cv2.putText(frame, f"Summa:  {score_upper.total}", (pad_left, total_y),
-                    self.FONT, 0.62, (215, 215, 215), 1, cv2.LINE_AA)
-
-        bonus_y     = total_y + row_step
-        bonus_color = (70, 210, 70) if score_upper.bonus > 0 else (130, 130, 130)
-        bonus_txt   = f"Bonus:  {score_upper.bonus}"
-        cv2.putText(frame, bonus_txt, (pad_left, bonus_y),
-                    self.FONT, 0.62, bonus_color, 1, cv2.LINE_AA)
-
-        # Framsteg mot bonus (visas om bonus ej uppnådd)
+        bonus_col = (70, 210, 70) if score_upper.bonus > 0 else (120, 120, 120)
+        bonus_txt = f"Bonus:  {score_upper.bonus}"
+        cv2.putText(frame, bonus_txt, (pad_l, y),
+                    self.FONT, 0.58, bonus_col, 1, cv2.LINE_AA)
         if score_upper.bonus_progress > 0:
-            prog_txt = f"({score_upper.bonus_progress} poang kvar till bonus)"
-            cv2.putText(frame, prog_txt, (pad_left, bonus_y + 22),
-                        self.FONT, 0.48, (110, 110, 110), 1, cv2.LINE_AA)
+            prog = f"({score_upper.bonus_progress} kvar)"
+            (pw, _), _ = cv2.getTextSize(prog, self.FONT, 0.46, 1)
+            cv2.putText(frame, prog, (pad_r - pw, y),
+                        self.FONT, 0.46, (105, 105, 105), 1, cv2.LINE_AA)
+        y += row_h - 4
 
-        # --- Instruktion längst ner ---
-        bottom_sep = by + box_h - 38
-        cv2.line(frame, (bx + 16, bottom_sep), (bx + box_w - 16, bottom_sep), (65, 65, 65), 1)
-        self._put_centered(frame, "1-6 = valj kategori  |  SPACE = fortsatt kasta", w,
-                           by + box_h - 14, 0.50, (160, 160, 160), 1)
+        cv2.putText(frame, f"Ovre total:  {score_upper.upper_total}", (pad_l, y),
+                    self.FONT, 0.62, (255, 210, 60), 2, cv2.LINE_AA)
+        y += row_h
+
+        # ── NEDRE SEKTION ─────────────────────────────────────────────
+        cv2.line(frame, (pad_l, y), (pad_r, y), (75, 75, 75), 1)
+        y += 10
+        self._put_centered(frame, "NEDRE SEKTION", w, y, 0.72, (255, 255, 255), 2)
+        y += 12
+        cv2.line(frame, (pad_l, y), (pad_r, y), (75, 75, 75), 1)
+        y += row_h - 4
+
+        for row in score_lower.rows(dice_values):
+            self._draw_score_row(frame, row, pad_l, pad_r, y, row_h)
+            y += row_h
+
+        # Nedre summor
+        y += 4
+        cv2.line(frame, (pad_l, y), (pad_r, y), (70, 70, 70), 1)
+        y += row_h - 6
+
+        cv2.putText(frame, f"Nedre total:  {score_lower.total}", (pad_l, y),
+                    self.FONT, 0.62, (255, 210, 60), 2, cv2.LINE_AA)
+        y += row_h
+
+        # ── GRAND TOTAL ───────────────────────────────────────────────
+        cv2.line(frame, (pad_l, y), (pad_r, y), (100, 100, 100), 1)
+        y += row_h - 6
+        grand = score_upper.upper_total + score_lower.total
+        self._put_centered(frame, f"TOTALT:  {grand}", w, y, 0.80, (255, 255, 255), 2)
+
+        # ── Instruktion ───────────────────────────────────────────────
+        instr_y = by + box_h - 14
+        cv2.line(frame, (pad_l, instr_y - 20), (pad_r, instr_y - 20), (60, 60, 60), 1)
+        self._put_centered(frame, "1-6 / a-i = valj kategori  |  SPACE = kasta igen", w,
+                           instr_y, 0.46, (145, 145, 145), 1)
+
+    def _draw_score_row(self, frame, row: dict,
+                        pad_l: int, pad_r: int, y: int, row_h: int) -> None:
+        """
+        Rita en kategorirad i score-popup.
+
+        Tre tillstånd:
+          locked  → grå text + [VALD]
+          ej valid → grå text, ingen tangent, score "0"
+          valbar  → vit label, grön score (eller grå om 0)
+        """
+        locked = row["locked"]
+        valid  = row.get("valid", True)
+
+        if locked:
+            label_col = (85, 85, 85)
+            score_col = (85, 85, 85)
+            label_txt = f"  {row['label']}  [VALD]"
+            score_txt = str(row["score"])
+        elif not valid:
+            label_col = (80, 80, 80)
+            score_col = (80, 80, 80)
+            label_txt = f"    {row['label']}"
+            score_txt = "0"
+        else:
+            label_col = (215, 215, 215)
+            score_col = (70, 210, 70) if row["score"] > 0 else (125, 125, 125)
+            label_txt = f"[{row['hotkey']}] {row['label']}"
+            score_txt = f"+{row['score']}"
+
+        scale = 0.58
+        cv2.putText(frame, label_txt, (pad_l, y),
+                    self.FONT, scale, label_col, 1, cv2.LINE_AA)
+        (sw, _), _ = cv2.getTextSize(score_txt, self.FONT, scale, 1)
+        cv2.putText(frame, score_txt, (pad_r - sw, y),
+                    self.FONT, scale, score_col, 1, cv2.LINE_AA)
 
     # ------------------------------------------------------------------
     # Hjälpmetod: centrera text horisontellt

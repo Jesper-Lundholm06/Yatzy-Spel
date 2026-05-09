@@ -22,13 +22,14 @@ from yolo_module import YoloModule
 from lock_zone import LockZone
 from ui_overlay import UIOverlay
 from game_state import GameState
-from yatzy_score import YatzyScoreUpper, HOTKEY_MAP
+from yatzy_score import YatzyScoreUpper, YatzyScoreLower, HOTKEY_MAP, LOWER_HOTKEY_MAP
 
 yolo        = YoloModule()
 lock_zone   = LockZone()
 overlay     = UIOverlay()
 game_state  = GameState()
 score_upper = YatzyScoreUpper()
+score_lower = YatzyScoreLower()
 
 
 def frame_callback(frame):
@@ -56,7 +57,7 @@ def frame_callback(frame):
 
     # 6. Rita score-popup ovanpå allt om den är aktiv
     if game_state.show_score_menu:
-        overlay.draw_score_popup(frame, score_upper, game_state.dice_values)
+        overlay.draw_score_popup(frame, score_upper, score_lower, game_state.dice_values)
 
     return frame
 
@@ -66,9 +67,12 @@ def key_callback(key: int) -> None:
 
     if game_state.show_score_menu:
         if hotkey in HOTKEY_MAP:
-            # Spelaren väljer en kategori → registrera och starta ny runda
-            category = HOTKEY_MAP[hotkey]
-            if score_upper.register(category, game_state.dice_values):
+            # Övre sektion: tangent 1–6
+            if score_upper.register(HOTKEY_MAP[hotkey], game_state.dice_values):
+                game_state.start_new_round()
+        elif hotkey in LOWER_HOTKEY_MAP:
+            # Nedre sektion: tangent a–i
+            if score_lower.register(LOWER_HOTKEY_MAP[hotkey], game_state.dice_values):
                 game_state.start_new_round()
         elif key == ord(" ") and game_state.can_roll():
             # Stäng popup utan att välja (bara tillåtet om kast kvar)

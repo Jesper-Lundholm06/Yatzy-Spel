@@ -25,48 +25,108 @@ Från och med nu gäller:
 python main.py
 ```
 
+## Aktuell filstruktur (implementerade moduler)
+
+| Fil | Klass | Ansvar |
+|---|---|---|
+| `main.py` | — | Orchestrator: kopplar alla moduler via callbacks, ingen spellogik |
+| `camera_module.py` | `CameraModule` | Kameraström, frame-loop, key-events via callbacks |
+| `yolo_module.py` | `YoloModule` | YOLOv8-inferens, `detect_only()` returnerar detektioner |
+| `lock_zone.py` | `LockZone` | Visuell låszon (höger 25%), färgar bounding boxes |
+| `game_state.py` | `GameState` | `roll_count`, `dice_values`, `locked_dice`, `show_score_menu` |
+| `yatzy_score.py` | `YatzyScoreUpper` + `YatzyScoreLower` | All poänglogik, regelkontroll, raddata för rendering |
+| `ui_overlay.py` | `UIOverlay` | Header med tärningsboxar, bottom-statusrad, score-popup |
+
+**Ej implementerade filer** (tomma stubs från grundstrukturen, reserverade för framtiden):
+`dice_manager.py`, `lockzone_module.py`, `game_engine.py`, `score_system.py`, `popup_menu.py`, `ai_opponent.py`
+
 ## Arkitektur och dataflöde
 
-Systemet är strikt modulärt. Data flödar i en riktning genom pipelinen — moduler kommunicerar inte med varandra utanför sina definierade gränssnitt.
+Data flödar i en riktning per frame. Moduler kommunicerar inte med varandra utanför sina definierade gränssnitt.
 
 ```
-camera_module
-    └─► yolo_module
-            ├─► dice_manager   (tärningarnas värden och låsstatus)
-            └─► lockzone_module ──► dice_manager (låsning via zon)
+CameraModule.start()
+    └─► frame_callback(frame)          [main.py]
+            │
+            ├─ yolo.detect_only()          → detektioner (value, bbox, conf)
+            ├─ lock_zone.process_detections() → låsflaggor per tärning
+            ├─ lock_zone.draw_zone()          → röd zon på frame
+            ├─ lock_zone.draw_detections()    → grön/gul bbox per tärning
+            ├─ game_state.update_live()       → live-värden sparas
+            └─ overlay.draw_ui()              → header + bottom-bar
+                    [om show_score_menu]:
+                    overlay.draw_score_popup() → dimmar + visar poängtabell
 
-dice_manager ──► game_engine
-                    ├─► score_system   (beräknar tillgängliga poäng)
-                    ├─► ai_opponent    (fattar beslut för AI-spelaren)
-                    └─► popup_menu     (renderar overlay, tar emot input)
-
-main.py — initierar alla moduler och håller igång huvudloopen
+CameraModule.start()
+    └─► key_callback(key)              [main.py]
+            ├─ SPACE → game_state.roll() + show_score_menu = True
+            ├─ 1–6  → score_upper.register() + start_new_round()
+            └─ a–i  → score_lower.register() + start_new_round()
 ```
 
-### Modulernas ansvarsindelning
+### Tangentmappning
 
-| Modul | Ansvar | Tar emot från | Exponerar till |
-|---|---|---|---|
-| `camera_module` | Kameraström | — | `yolo_module` |
-| `yolo_module` | YOLO-inferens, bounding boxes + värden 1–6 | `camera_module` | `dice_manager`, `lockzone_module` |
-| `lockzone_module` | Avgör om tärning är i låszon | `yolo_module` | `dice_manager` |
-| `dice_manager` | Tärningarnas tillstånd (värde, låst/olåst) | `yolo_module`, `lockzone_module` | `game_engine` |
-| `game_engine` | Spelflöde, turordning (kast 1–3), omgångar | `dice_manager`, `popup_menu` | `score_system`, `ai_opponent`, `popup_menu` |
-| `score_system` | Poängberäkning, scorekort, kategorier | `game_engine` | `game_engine`, `popup_menu` |
-| `ai_opponent` | Strategibeslut (låsning + kategori) | `game_engine` | `game_engine` |
-| `popup_menu` | OpenCV-overlay, musklick/tangentbord | `game_engine`, `score_system` | `game_engine` |
+| Tangent | Effekt |
+|---|---|
+| `q` | Avsluta programmet |
+| `SPACE` | Kasta (om kast kvar) / stäng popup utan val |
+| `1`–`6` | Välj övre kategori (Ettor–Sexor) i popup |
+| `a`–`i` | Välj nedre kategori (Ett par–Yatzy) i popup |
 
-### Viktiga gränsdragningar
+### Viktiga designregler
 
-- `yolo_module` tränar **inte** modellen — den laddar en färdig modell.
-- `score_system` väljer **inte** kategori — den exponerar möjliga val.
-- `ai_opponent` modifierar **inte** scorekort direkt — det sker via `game_engine`.
-- `game_engine` renderar **ingen** grafik — det delegeras till `popup_menu`.
-- `main.py` innehåller **ingen** spellogik — den kopplar bara ihop modulerna.
+- `yolo_module` laddar färdig modell (`best.pt`) — tränar inte.
+- `lock_zone` avgör låsning visuellt — påverkar inte poänglogiken.
+- `game_state` håller rundans tillstånd — ingen renderingskod.
+- `yatzy_score` beräknar och lagrar poäng — väljer inte kategori.
+- `ui_overlay` renderar — fattar inga beslut.
+- `main.py` orchestrerar — innehåller ingen spellogik.
 
 ## prompt.md
 
 Filen `prompt.md` används som loggbok för Claude-sessioner. Vid varje ny session som förändrar projektet ska en ny sektion läggas till **överst** i filen med datum, syfte, skapade/ändrade filer och teknisk sammanfattning.
+
+---
+
+## 2026-05-09 — Poängsystem: nedre sektionen + grand total
+
+### Syfte
+Implementera nedre sektionens 9 kategorier med korrekt Yatzy-regellogik, integrera i popup och hantera tangenter a–i för val.
+
+### Regelimplementering (YatzyScoreLower.calculate)
+
+| Kategori | Logik | Specialfall |
+|---|---|---|
+| Ett par | max(v där count≥2) × 2 | — |
+| Två par | Två högsta par via floor(c/2) per värde | fyra lika = två par |
+| Tretal | max(v där count≥3) × 3 | — |
+| Fyrtal | max(v där count≥4) × 4 | — |
+| Kåk | sum(dice) om exakt count==3 och count==2 | Yatzy (5 lika) exkluderas |
+| Liten stege | sorted==\[1,2,3,4,5\] → 15 | — |
+| Stor stege | sorted==\[2,3,4,5,6\] → 20 | — |
+| Chans | sum(dice) alltid valbar | — |
+| Yatzy | len(counts)==1 → 50 | — |
+
+`calculate()` returnerar `(score, valid: bool)` — `valid=False` → grå, ej klickbar.
+`register()` returnerar False om kategorin är låst **eller** ej valid.
+
+### UI-popup (ui_overlay.py)
+
+- `draw_score_popup(frame, score_upper, score_lower, dice_values)` — ny signatur.
+- `_draw_score_row(frame, row, pad_l, pad_r, y, row_h)` — ny hjälpmetod, 3 tillstånd: locked/ej valid/valbar.
+- Radhöjd: `max(22, (box_h - 165) // 20)` — proportionell, fungerar vid alla upplösningar.
+- Popup-höjd: 91% av frame.
+- Grand total (övre_total + nedre_total) visas längst ner i popup.
+
+### Tangenter
+- 1–6 → övre sektion
+- a–i → nedre sektion (a=ett par ... i=yatzy)
+- SPACE → stäng popup om kast kvar
+
+### Ändrade filer
+- `yatzy_score.py` — `YatzyScoreLower`, `LOWER_CATEGORIES`, `LOWER_HOTKEY_MAP`
+- `ui_overlay.py` — ny popup-signatur, `_draw_score_row`, nedre sektion
+- `main.py` — `score_lower`, `LOWER_HOTKEY_MAP`, a–i-tangenter
 
 ---
 
