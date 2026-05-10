@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-05-10 — Konvertering till webbapp (Flask + HTML/CSS/JS)
+
+### Prompt (sammanfattning)
+"Jag vill nu konvertera mitt nuvarande Yatzy-projekt (Python + AI + kamera) till en webbapplikation. Kraven: AI-bot med egna slumptärningar, prioriteringsstrategi, visa botens tärningar, 3 kast per runda, övre + nedre poängtabell, bonus, modulärt. Kamera + YOLO ska vara kvar. Teknikval: Flask (Python) + HTML/CSS/JS."
+
+### Vad som gjordes
+Hela spelet portades till en webbapplikation utan att ändra spellogiken (`game_state.py`, `player.py`, `yatzy_score.py`).
+
+**Nya filer:**
+- `bot_logic_web.py` — Synkron bot: `roll_dice`, `choose_category`, `execute_choice`. Ingen state-maskin — server beslutar, JS animerar.
+- `camera_stream.py` — Bakgrundstråd (daemon) som läser kamera och kör YOLO kontinuerligt. Exponerar `get_live_values()` och `generate_frames()` (MJPEG-generator för Flask).
+- `game_logic.py` — Trådsäker wrapper med `threading.RLock`. Alla metoder returnerar JSON-dict med hela speltillståndet. `bot_turn()` returnerar extra fält `bot_dice` och `bot_choice_label`.
+- `web_app.py` — Flask-server med 9 endpoints: `/api/start`, `/api/roll`, `/api/toggle_lock`, `/api/register`, `/api/strike`, `/api/toggle_stryk`, `/api/bot_turn`, `/api/restart`, `/video_feed` (MJPEG).
+- `templates/index.html` — Startmodal (spelarantal + bot-toggle), bot-overlay med tärningsvisning + valtext, game-over-overlay, spelkontainer (kamera + sidopanel med poängtabell).
+- `static/css/style.css` — Mörkt speltema med CSS-variabler. Stilar för modal, tärningsboxar (låst=guldbård), poängrader (locked/struck/invalid/stryk), bot-overlay, spelarmarkörer.
+- `static/js/game.js` — Spelklient. `runBotTurn()`: anropar `/api/bot_turn`, visar botens tärningar 3s, sedan val 2.5s, sedan renderar nytt state. `renderState()` renderar alla UI-delar. `buildScoreRow()` hanterar alla radtillstånd (locked/struck/invalid/preview/strykbar).
+- `requirements.txt` — Flask + opencv-python + ultralytics + torch/torchvision.
+
+### Tekniska beslut
+- Trådsäkerhet: `threading.Lock` i `CameraStream`, `threading.RLock` (reentrant) i `GameLogic` så `get_state()` kan anropas inifrån låsta metoder.
+- Bot-timing: server fattar alla beslut direkt, JS hanterar animationsförseningar (3000ms + 2500ms) med `setTimeout`.
+- MJPEG: `<img src="/video_feed">` i HTML streamas direkt via Flask `Response(generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")`.
+- Speltillstånd skickas alltid komplett från server — ingen partiell uppdatering.
+
+### Ändrade/skapade filer
+`bot_logic_web.py` (ny), `camera_stream.py` (ny), `game_logic.py` (ny), `web_app.py` (ny), `templates/index.html` (ny), `static/css/style.css` (ny), `static/js/game.js` (ny), `requirements.txt` (ny)
+
+---
+
 ## 2026-05-10 — Bugfix: Sidopanelen kapas i höjdled
 
 ### Problem

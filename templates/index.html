@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Yatzy</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- ── Startmodal ───────────────────────────────────────────────────────────── -->
+<div id="start-modal" class="modal-overlay">
+  <div class="modal-box">
+    <h1>🎲 AI Yatzy</h1>
+
+    <div class="modal-row">
+      <label>Antal spelare</label>
+      <div class="btn-group" id="player-count-btns">
+        <button class="count-btn active" data-count="1">1</button>
+        <button class="count-btn"        data-count="2">2</button>
+      </div>
+    </div>
+
+    <div class="modal-row" id="bot-row">
+      <label>AI-motståndare</label>
+      <label class="toggle">
+        <input type="checkbox" id="has-bot" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <button id="start-btn" class="primary-btn">Starta spelet</button>
+  </div>
+</div>
+
+<!-- ── Bot-overlay (visas under botens tur) ─────────────────────────────────── -->
+<div id="bot-overlay" class="bot-overlay hidden">
+  <div class="bot-banner" id="bot-banner">
+    <div id="bot-status-text">BOT KASTAR</div>
+    <div id="bot-dice-display"></div>
+    <div id="bot-choice-display" class="hidden"></div>
+  </div>
+</div>
+
+<!-- ── Game Over-overlay ────────────────────────────────────────────────────── -->
+<div id="game-over-overlay" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2>Spelet är slut!</h2>
+    <div id="game-over-results"></div>
+    <button class="primary-btn" onclick="restart()">Spela igen</button>
+  </div>
+</div>
+
+<!-- ── Spellayout ────────────────────────────────────────────────────────────── -->
+<div id="game-container" class="game-container hidden">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-title">🎲 AI Yatzy</div>
+    <div class="header-players" id="header-players"></div>
+  </header>
+
+  <!-- Innehåll: kamera + spelpanel -->
+  <main class="main-area">
+
+    <!-- Vänster: kamerabild -->
+    <section class="camera-section">
+      <img id="camera-feed"
+           src="/video_feed"
+           alt="Kamerabild"
+           onerror="handleCameraError()">
+      <div id="no-camera" class="no-camera-msg" style="display:none">
+        📷 Kamera ej tillgänglig — tärningar från YOLO saknas
+      </div>
+    </section>
+
+    <!-- Höger: spelpanel -->
+    <aside class="game-panel">
+
+      <!-- Aktiv spelare + kasträknare -->
+      <div class="player-status">
+        <span id="current-player-name">–</span>
+        <span id="roll-count-badge" class="roll-badge">–</span>
+      </div>
+
+      <!-- 5 tärningsboxar -->
+      <div class="dice-row" id="dice-row">
+        <!-- Genereras av game.js -->
+      </div>
+
+      <!-- Kast-knapp -->
+      <button id="roll-btn" class="primary-btn" disabled onclick="rollDice()">
+        🎲 Kasta
+      </button>
+
+      <!-- Strykläge-knapp (visas bara när alla kast är gjorda) -->
+      <div id="stryk-row" style="display:none">
+        <button id="stryk-btn" class="secondary-btn" onclick="toggleStryk()">
+          Strykläge
+        </button>
+      </div>
+
+      <!-- Poängtabell (scrollbar om innehållet är högt) -->
+      <div class="score-panel">
+
+        <div class="score-section">
+          <div class="section-header">ÖVRE SEKTION</div>
+          <div id="upper-rows"></div>
+          <div class="score-summary" id="upper-summary"></div>
+        </div>
+
+        <div class="score-section">
+          <div class="section-header">NEDRE SEKTION</div>
+          <div id="lower-rows"></div>
+          <div class="score-summary" id="lower-summary"></div>
+        </div>
+
+        <div class="grand-total" id="grand-total">TOTALT: – p</div>
+
+      </div><!-- /.score-panel -->
+    </aside>
+
+  </main>
+
+  <!-- Statusrad längst ner -->
+  <footer class="status-bar" id="status-bar">
+    Klicka "Kasta" för att börja!
+  </footer>
+
+</div><!-- /#game-container -->
+
+<script src="/static/js/game.js"></script>
+</body>
+</html>

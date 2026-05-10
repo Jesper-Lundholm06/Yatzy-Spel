@@ -4,6 +4,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## 2026-05-10 — Konvertering till webbapp (Flask + HTML/CSS/JS)
+
+### Syfte
+Konvertera Yatzy-projektet till en webbapplikation med Flask-backend, MJPEG-kameraström, REST-API och modernt HTML/CSS/JS-gränssnitt. Spellogik och YOLO-detektion återanvänds oförändrade.
+
+### Arkitektur
+- **`web_app.py`** — Flask-server med alla endpoints (se kommentar i filen)
+- **`camera_stream.py`** — Bakgrundstråd som läser kamera + YOLO, exponerar MJPEG-stream och live-värden
+- **`game_logic.py`** — Trådsäker wrapper (RLock) för GameState/Player/yatzy_score — returnerar alltid JSON-dict
+- **`bot_logic_web.py`** — Synkron bot: `roll_dice()`, `choose_category()`, `execute_choice()` (ingen state-maskin, ingen sleep)
+- **`templates/index.html`** — Startmodal, bot-overlay, game-over-overlay, spelkontainer
+- **`static/css/style.css`** — Mörkt speltema (CSS-variabler), modal, tärningsboxar, poängrader, bot-overlay
+- **`static/js/game.js`** — Spelklient: `startGame`, `rollDice`, `runBotTurn` (3s tärningsvisning + 2.5s val), `renderState`, `buildScoreRow`, `showGameOver`, `apiPost`
+
+### Bot-timing (skiljer sig från desktop)
+Desktop-boten använder `time.time()`-fördröjningar i en fas-maskin. I webbversionen fattar servern alla beslut synkront och returnerar `bot_dice` + `bot_choice_label` i svaret. JavaScript hanterar animationsförseningarna med `setTimeout` (3000ms + 2500ms).
+
+### Skapade filer
+- `bot_logic_web.py`
+- `camera_stream.py`
+- `game_logic.py`
+- `web_app.py`
+- `templates/index.html`
+- `static/css/style.css`
+- `static/js/game.js`
+- `requirements.txt`
+
+### Starta webbappen
+```powershell
+pip install flask
+python web_app.py
+# Öppna: http://localhost:5000
+```
+
+---
+
 ## 2026-05-10 — UI-uppgradering: slide-in panel, rundade tärningar, modern statusrad
 
 ### Syfte

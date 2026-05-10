@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(python -c \"from flask import Flask; print\\('Flask OK'\\)\")",
+      "Bash(python -c ' *)"
+    ]
+  }
+}
